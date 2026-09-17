@@ -1,0 +1,4 @@
+# These three entries are the production deployment prompts. No usable default secrets.
+ADMIN_PASSWORD=""
+BOT_TOKEN=""
+OWNER_ID=""

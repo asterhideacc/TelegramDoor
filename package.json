@@ -1,0 +1,61 @@
+{
+  "name": "telegramdoor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A self-hosted Telegram inbox with verification and an anti-spam dashboard, on Cloudflare Workers.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "npm run build && npm run db:local && wrangler dev --ip 127.0.0.1",
+    "dev:ui": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit && tsc -p tests/tsconfig.json --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm test && npm run build",
+    "db:local": "wrangler d1 migrations apply DB --local",
+    "db:remote": "wrangler d1 migrations apply DB --remote",
+    "deploy": "npm run build && npm run db:remote && wrangler deploy",
+    "preview:worker": "wrangler dev --ip 127.0.0.1",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "hono": "^4.13.8",
+    "lucide-react": "^0.577.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.1.11",
+    "@cloudflare/workers-types": "^5.20260917.1",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "prettier": "^3.9.7",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.0",
+    "vitest": "~4.1.0",
+    "wrangler": "^4.133.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "ADMIN_PASSWORD": {
+        "description": "后台密码，至少 16 个字符。请使用随机长密码。"
+      },
+      "BOT_TOKEN": {
+        "description": "从 Telegram @BotFather 创建机器人后取得的 Token。"
+      },
+      "OWNER_ID": {
+        "description": "你的 Telegram 数字用户 ID，必须是个人账号的正整数 ID。"
+      },
+      "DB": {
+        "description": "自动创建的 D1 数据库，用于消息映射、拦截记录和配置。"
+      }
+    }
+  }
+}
