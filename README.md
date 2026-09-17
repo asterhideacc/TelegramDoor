@@ -18,7 +18,7 @@
 - **人机验证**：默认聊天内算术题，开箱即用；可在后台切换到免费的 Cloudflare Turnstile。
 - **防骚扰**：用户限频、验证失败冷却、永久/临时封禁、白名单、关键词过滤、链接拦截、暂停接收。
 - **中文后台**：统计概览、拦截记录、消息记录、访客管理、防护设置；今天、近 7 天、近 30 天、全部历史；搜索、分页、详情和后台回复。
-- **部署简化**：三个必填配置，D1 绑定与数据库迁移由模板处理，Webhook 密钥自动派生。
+- **部署简化**：三个必填配置，D1 自动绑定、首次访问自动建表，Webhook 密钥自动派生。
 - **隐私**：可关闭文本记录；媒体不下载；定期清理记录；Turnstile Secret 加密保存，Bot Token 和管理员密码不返回前端。
 
 ## 三个必填配置
@@ -41,7 +41,7 @@ D1 的 `DB` 是资源绑定，不是第四个需要手工提供的密钥。启�
 
 1. 注册/登录 Cloudflare 和 GitHub，准备三个必填配置。
 2. 点击上方 **Deploy to Cloudflare**，按向导创建自己的仓库与 Worker，填写三个配置。
-3. 模板使用 `npm run deploy` 构建后台、应用 D1 migrations 并部署 Worker。请保留模板的自定义部署命令；只执行 `wrangler deploy` 不会初始化表结构。
+3. 保留模板的 `npm run deploy` 部署命令，它会构建后台并部署 Worker。D1 由向导创建并绑定，表结构在首次访问时自动初始化，无需额外的 D1 管理令牌。
 4. 打开部署得到的 HTTPS 地址，例如 `https://telegramdoor.<你的子域>.workers.dev`，输入管理密码。
 5. 用 `OWNER_ID` 对应的 Telegram 账号打开自己的机器人，发送 `/start`。
 6. 在后台「防护设置」点击 **连接 Telegram**，然后「检查连接」。这会设置 Webhook 和命令菜单，不丢弃未处理消息。
@@ -49,9 +49,11 @@ D1 的 `DB` 是资源绑定，不是第四个需要手工提供的密钥。启�
 
 Cloudflare 的部署按钮支持 D1 自动创建和密钥提示，配置来源分别是 `wrangler.jsonc` 和 `.dev.vars.example`。首次云端部署仍需登录、授权和填写自己的密钥；本仓库不提供共享机器人服务。
 
-**Project name 可以保留 `telegramdoor` 吗？** 可以。其他人的 GitHub 账号可以创建同名仓库，名称不需要全网唯一；同一个账号内已有同名仓库时，需要换一个未使用的名字。创建失败的尝试也可能留下一个只有 `README.md`、`wrangler.jsonc` 的不完整仓库，它不能直接用于部署。完整项目应包含 `package.json`、`src/` 和 `migrations/`。
+**Project name 可以保留 `telegramdoor` 吗？** 可以。其他人的 GitHub、Cloudflare 账号可以使用同名仓库和 Worker，名称不需要全网唯一；自己的账号内已有同名资源时，请换一个未使用的名字，例如 `telegramdoor-inbox`。建议只用小写字母、数字和短横线，不以短横线开头或结尾，最长 63 个字符，以兼容 `workers.dev` 域名。
 
-如果提示 `Cloudflare could not create the Git repository right now`，表示创建或填充 Git 仓库的步骤没有完成，不是机器人已运行后的错误。先确认 Cloudflare Workers and Pages GitHub App 对目标账号、仓库有访问权限；重试时使用未被占用的仓库名。模板不包含启用状态的 GitHub Actions 工作流，避免复制 `.github/workflows/` 时触发额外的工作流写权限要求；需要 CI 的开发者可按[贡献指南](CONTRIBUTING.md)自行启用。仅凭这条通用错误不能确认具体原因，持续失败时可联系 Cloudflare 支持，或使用下面的命令行部署方式。
+**仓库创建失败，或只出现两个文件？** 完整副本应有 `package.json`、`package-lock.json`、`src/`、`migrations/` 等文件。如果只有 `README.md` 和 Wrangler 配置，源码导入没有完成，不能算部署成功。Cloudflare 有一条仍未关闭的[相同现象报告](https://github.com/cloudflare/developer-platform/issues/31)，其中官方模板也受影响。换名字只能排除重名，不能保证修复导入服务的问题。详细定位方法和浏览器恢复步骤见[部署排错](docs/deployment.md)。
+
+模板已移出默认 GitHub Actions 工作流，以排除复制工作流的额外权限风险；这只是兼容性预防措施，不代表已经确认它就是仓库创建失败的原因。
 
 **只填三个配置就能用吗？** 默认聊天内算术验证可以。部署完成后还需给机器人发送 `/start`，并登录后台点击「连接 Telegram」。不需要准备 Turnstile 密钥，也不需要手动创建数据库。
 
@@ -59,7 +61,7 @@ Cloudflare 的部署按钮支持 D1 自动创建和密钥提示，配置来源�
 
 ### 命令行部署
 
-要求 Node.js 22.12+（推荐 Node.js 24 LTS）和 npm。
+要求 Node.js 22.12+（推荐 Node.js 24 LTS）和 npm。Cloudflare Builds 通过仓库的 `.node-version` 使用 Node.js 24。
 
 ```sh
 git clone https://github.com/maodeyu180/TelegramDoor.git
@@ -186,7 +188,7 @@ npm run build
 npx wrangler deploy --dry-run --outdir .local/worker
 ```
 
-自动化测试在 Workers 运行时使用本地 D1，模拟 Telegram 与 Turnstile HTTP 响应。测试覆盖鉴权、CSRF、去重、消息映射、编辑过滤、验证码绑定/过期/重放、封禁、限频、双方回应、Turnstile 服务端核验、时间过滤和清理。[可选 CI 示例](docs/examples/github-actions-ci.yml)不包含部署操作，启用方法见[贡献指南](CONTRIBUTING.md)。
+自动化测试在 Workers 运行时使用本地 D1，模拟 Telegram 与 Turnstile HTTP 响应。测试覆盖空库初始化、并发建表、失败回滚重试、旧数据兼容，以及鉴权、CSRF、去重、消息映射、编辑过滤、验证码绑定/过期/重放、封禁、限频、双方回应、Turnstile 服务端核验、时间过滤和清理。[可选 CI 示例](docs/examples/github-actions-ci.yml)不包含部署操作，启用方法见[贡献指南](CONTRIBUTING.md)。
 
 目录：
 
@@ -202,6 +204,7 @@ docs/            上线验收与设计说明
 ## 文档与贡献
 
 - [架构与数据处理](docs/architecture.md)
+- [部署排错与浏览器恢复](docs/deployment.md)
 - [真实账号验收清单](docs/acceptance.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全问题报告](SECURITY.md)

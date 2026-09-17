@@ -32,6 +32,7 @@ import {
 import { handleUpdate, sendAdminReply } from './bot';
 import { ownerCommands, telegram, TelegramError } from './telegram';
 import { completeChallenge, failChallenge } from './verification';
+import { DatabaseSetupError, ensureDatabase } from './database';
 
 type Context = { Bindings: Env; Variables: { sessionId: string } };
 export const app = new Hono<Context>();
@@ -43,7 +44,13 @@ app.use('*', async (c, next) => {
   c.header('Cache-Control', 'no-store');
   c.header('X-Frame-Options', 'DENY');
   if (!configured(c.env))
-    return c.json({ error: '请先配置 ADMIN_PASSWORD（至少16位）、BOT_TOKEN 和 OWNER_ID。' }, 503);
+    return c.json(
+      {
+        error:
+          '请在 Worker 设置 → 变量和机密中配置 ADMIN_PASSWORD（至少16位）、BOT_TOKEN 和 OWNER_ID；仅填写构建变量不会生效。',
+      },
+      503,
+    );
   await next();
 });
 app.use(
@@ -58,6 +65,17 @@ app.use('/api/*', async (c, next) => {
     if (!c.req.header('content-type')?.includes('application/json'))
       return c.json({ error: '需要 JSON 请求' }, 415);
   }
+  await next();
+});
+
+app.use('/webhook', async (c, next) => {
+  const supplied = c.req.header('x-telegram-bot-api-secret-token') || '';
+  if (!supplied || !(await constantEqual(supplied, await derivedSecret(c.env, 'webhook'))))
+    return c.json({ error: 'Unauthorized' }, 401);
+  await next();
+});
+app.use('*', async (c, next) => {
+  await ensureDatabase(c.env.DB);
   await next();
 });
 
@@ -451,9 +469,6 @@ app.post('/api/challenge/verify', async (c) => {
 });
 
 app.post('/webhook', async (c) => {
-  const supplied = c.req.header('x-telegram-bot-api-secret-token') || '';
-  if (!supplied || !(await constantEqual(supplied, await derivedSecret(c.env, 'webhook'))))
-    return c.json({ error: 'Unauthorized' }, 401);
   const update = await c.req.json<Update>();
   if (!Number.isSafeInteger(update.update_id) || update.update_id < 0)
     return c.json({ error: 'Invalid update' }, 400);
@@ -502,6 +517,10 @@ app.get('/health', async (c) => {
 });
 app.notFound((c) => c.json({ error: 'Not found' }, 404));
 app.onError((error, c) => {
+  if (error instanceof DatabaseSetupError) {
+    c.header('Retry-After', '5');
+    return c.json({ error: error.message }, 503);
+  }
   if (error instanceof ZodError)
     return c.json(
       { error: '参数格式不正确', fields: error.issues.map((i) => i.path.join('.')) },
@@ -519,6 +538,12 @@ app.onError((error, c) => {
 export default {
   fetch: app.fetch,
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(cleanup(env));
+    if (!configured(env)) return;
+    ctx.waitUntil(
+      (async () => {
+        await ensureDatabase(env.DB);
+        await cleanup(env);
+      })(),
+    );
   },
 } satisfies ExportedHandler<Env>;

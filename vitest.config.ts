@@ -7,6 +7,7 @@ export default defineConfig({
       main: './src/worker/index.ts',
       miniflare: {
         compatibilityDate: '2026-09-01',
+        modulesRules: [{ type: 'Text', include: ['**/*.sql'], fallthrough: true }],
         d1Databases: ['DB'],
         bindings: {
           ADMIN_PASSWORD: 'test-password-not-for-production',

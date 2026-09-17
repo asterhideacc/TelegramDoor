@@ -19,3 +19,11 @@ GitHub 对写入 `.github/workflows/` 有额外的 Workflows 权限要求，而 
 即使不启用 GitHub Actions，提交前仍应运行 `npm run check`。
 
 前端验证应同时检查空数据、有数据、网络失败和移动端。不要将展示用统计数字放进生产默认状态。
+
+## 部署与数据库兼容
+
+`.node-version` 为 Cloudflare Builds 指定 Node.js 24。保持 `.dev.vars.example` 只有三个必填项且值为空；部署向导会把示例值当作实际默认值，不要在其中放可用的测试密码或 Token。
+
+`src/worker/database.ts` 通过 D1 绑定初始化 `0001_initial.sql`，避免默认构建令牌缺少 D1 管理权限时卡在迁移步骤。这个初始文件已发布，不应改写；其中只有幂等 CREATE 语句，运行时的分号切分不适用于带触发器或字符串分号的新 SQL。初始化事务还写入 Wrangler 标准迁移标记，保持手工迁移兼容。
+
+未来新增迁移必须同时设计新部署和已有数据库的升级方式，覆盖失败回滚与数据保留测试；当前初始化函数不会自动执行新增文件。`npm run db:remote` 保留给明确的管理操作，使用它的 Cloudflare 凭据需要 D1 编辑权限。不要把它重新无条件放回默认部署命令。

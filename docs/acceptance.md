@@ -5,8 +5,11 @@
 ## 部署
 
 - [ ] 从干净仓库使用 Cloudflare 部署按钮，确认只提示三个必填配置。
-- [ ] 确认 D1 已创建、绑定名是 `DB`、迁移成功。
+- [ ] 创建出的仓库包含 `src/`、`package.json`、`package-lock.json` 和 `migrations/`；只有 README 和 Wrangler 配置时按[部署排错](deployment.md)处理。
+- [ ] 使用自己的 Project name、D1 名称完成构建，部署命令为 `npm run deploy`。
+- [ ] 确认 D1 已创建、绑定名是 `DB`；无需额外 D1 API Token 或手工运行 SQL，首次访问 `/health` 返回 `ok: true`。
 - [ ] 后台能登录；刷新保持登录；退出后原 Cookie 无法访问 API。
+- [ ] 再次部署后，已有设置、封禁和消息对应关系仍保留。
 - [ ] 所有管理页面和手机布局正常；HTTPS 静态资源与 API 不报 CSP 错误。
 - [ ] 管理员向机器人 `/start` 后，在后台连接并检查 Webhook，URL 指向自己的域名。
 

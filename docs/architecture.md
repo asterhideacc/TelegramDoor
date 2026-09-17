@@ -45,6 +45,10 @@ Turnstile 服务端密钥配置错误和服务端故障不消耗用户验证次�
 
 三个用户提供的配置：`ADMIN_PASSWORD`、`BOT_TOKEN`、`OWNER_ID`。Webhook Secret 独立 HMAC 派生，无需第四个用户配置。Worker 同源托管 UI，前端不持有 Telegram 或 Cloudflare 凭据。
 
+一键部署向导创建 D1 资源并写入绑定。部署脚本只构建与发布，不依赖构建令牌的 D1 迁移接口权限。第一次 API/健康检查请求或定时清理，通过 `DB` 绑定执行 `0001_initial.sql` 的建表语句；表结构和 Wrangler 兼容的 `d1_migrations` 标记在同一 D1 batch 事务中提交。重复和并发初始化不会清空数据，失败则回滚并允许下次请求重试。非法 Webhook 在访问数据库前就被拒绝。
+
+每个运行实例只缓存已完成的初始化，不跨请求共享正在执行的 D1 Promise。自动初始化只适用于已发布的、幂等的初始建表文件；未来 schema 变更需要新增迁移和升级方案，不会在请求中自动执行任意新增 SQL。已用 Wrangler 迁移的旧数据库可直接使用；运行时初始化的数据库也可继续使用 `npm run db:remote` 执行后续经审核的迁移。
+
 登录产生 256 位随机会话标识；D1 存 SHA-256(标识 + 管理密码)，Cookie 不含密码且为 HttpOnly、SameSite Strict。HTTPS 时启用 Secure。登录受每 IP 和全局限频保护；生产只使用 Cloudflare 提供的客户端 IP 头。密码变化会使旧 Cookie 找不到对应会话。每个管理接口验证会话；写操作还需要同源 Origin（如存在）与自定义请求头，不开放跨域 CORS。
 
 ## 数据表
