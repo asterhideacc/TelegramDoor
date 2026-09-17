@@ -467,7 +467,7 @@ export default function SettingsPage({
             </li>
           </ol>
           <p className="field-hint">
-            D1 按部署教程创建并绑定。Turnstile 密钥在本页配置，无需再增加环境变量。
+            D1 在 Cloudflare 控制台绑定为 DB，无需填写数据库 ID。Turnstile 密钥在本页配置。
           </p>
         </div>
         <div className="tip-card">

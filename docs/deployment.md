@@ -1,103 +1,124 @@
-# 部署方式与排错
+# 部署排错与其他部署方式
 
-**推荐：[先 Fork，再到 Cloudflare 选择自己的仓库部署](deployment-manual.md)。** 首次配置 D1 和三个运行时密钥，之后通过 GitHub 的 `Sync fork` 获取更新，由 Cloudflare 自动构建发布。
+首次部署请看[网页教程](deployment-manual.md)。遇到问题时，从下面选择最接近的现象即可；不用从头重新部署。
 
-首页的“在 Cloudflare 部署自己的 Fork”只打开 Cloudflare 控制台。进入 **Workers & Pages → Create application → Import a repository**，选自己的 Fork；它不再使用自动复制模板的服务。
+## 按现象排错
 
-| 方式                        | 仓库来源                                  | D1 和密钥                               | 后续更新                                     |
-| --------------------------- | ----------------------------------------- | --------------------------------------- | -------------------------------------------- |
-| Fork 后导入已有仓库（推荐） | GitHub 创建真正的 Fork，Cloudflare 关联它 | 首次按教程创建并绑定 D1，填写运行时密钥 | Sync fork → Update branch；冲突需先处理      |
-| 模板按钮（可选）            | Cloudflare 自动创建独立源码副本           | 模板向导创建并绑定 D1，询问密钥         | 没有 GitHub Sync fork，需手工合并或迁到 Fork |
+- [后台提示缺少配置，或密码无法登录](#后台提示缺少配置或无法登录)
+- [连接 GitHub 后没有开始构建](#连接后没有开始构建)
+- [还是 Hello World，或更新后页面没变化](#还是-hello-world或页面没更新)
+- [D1 不存在、缺少 DB 绑定或权限错误](#d1-不存在或权限错误)
+- [Worker 名称不匹配、找不到 dist 等构建错误](#其他构建错误)
+- [Cloudflare 创建仓库失败，源码只有两个文件](#仓库创建失败或源码不完整)
+- [之前按钮部署失败，如何接着做](#从失败的按钮部署继续)
 
-Fork 方案减少了对模板复制服务的依赖，更新路径也更直接；这是选择它的原因，不代表有数据证明总体部署失败率降低。D1 绑定、账号授权及构建仍需按[教程检查点](deployment-manual.md)确认。
+## 后台提示缺少配置或无法登录
 
-已有独立副本可以按[迁移说明](updating.md#已用旧按钮部署如何迁到-fork)保留现有 Worker 和数据库，只切换代码来源。
+到**当前 Worker → Settings → Variables and Secrets** 检查：
 
-## 模板部署（可选）
+1. 是否有 `ADMIN_PASSWORD`、`BOT_TOKEN`、`OWNER_ID` 三个名称，且没有拼写错误或首尾空格。
+2. 密码至少 8 位；Bot Token 是否完整；OWNER_ID 是否为管理员自己的正整数 ID。
+3. 是否点击了 **Deploy / 保存并部署**，让配置生效。
 
-仅希望快速试用、不要求保留 Fork 关系时，可以使用原来的模板按钮：
+只填 Builds 的构建变量不会传给运行中的应用。网页输入值时不要添加包裹引号。忘记后台密码可直接在这里修改 `ADMIN_PASSWORD` 并部署，然后用新密码登录；旧登录会话会失效。
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fmaodeyu180%2FTelegramDoor)
+## 连接后没有开始构建
 
-这个按钮会复制源码到新的独立仓库。即使先 Fork，或把 URL 改成自己的 Fork 地址，模板按钮仍然会再次复制源码；它不是“选择已有仓库部署”的入口。[官方按钮流程](https://developers.cloudflare.com/workers/platform/deploy-buttons/)
+检查 **Worker → Settings → Builds** 是否已连接自己的 Fork、生产分支是否为 `main`、根目录是否为 `/`。看不到仓库时，检查 Cloudflare 的 GitHub App 是否获准访问该仓库。
 
-1. 准备 `ADMIN_PASSWORD`、`BOT_TOKEN`、`OWNER_ID` 三个值，格式见 [README](../README.md#三个必填配置)。曾使用旧双向服务的机器人先按[迁移说明](../README.md#从其他双向机器人迁移)撤销旧 Token。
-2. 点击源仓库的部署按钮，选择自己的 Cloudflare 账户，连接自己的 GitHub 账号。公开源仓库可以属于别人。
-3. 在向导中选择仓库/Worker 名称，填写三个密钥。D1 选择 **Create new**，名称可保留 `telegramdoor`；自己的账户内有同名资源时换个可用名称。不要选择其他应用的数据库。
-4. 保留根目录 `/`、部署命令 `npm run deploy`。向导复制源码、创建 D1 并将真实数据库 ID 写入副本里的 `wrangler.jsonc`；部署脚本构建后台并发布 Worker。
-5. 确认发布成功，再打开 Worker 地址的 `/health`，应返回 `{"ok":true,"version":"0.1.0"}`。首次请求自动建表，无需手工运行 SQL。
-6. 登录后台，管理员用自己的 Telegram 账号向机器人发送 `/start`，在「防护设置」点击「连接 Telegram」和「检查连接」，再用另一个账号验收双向通信。
+连接后可以在 Builds 中启动新构建；若界面没有入口，在 Fork 的 README 提交一处文档修改触发。没有新提交时，重复点击 Sync fork 不会产生新构建。不要只重跑仍使用旧源码的旧记录。
 
-**成功检查点：** GitHub 副本包含完整源码；D1 数据库真实存在；配置中的 `database_id` 与该账户 D1 详情一致，已不是全零占位值；Worker 发布成功且 `/health` 正常。只有生成了一个数据库 ID、完成前端构建或创建了占位 Worker，都不算部署完成。
+## 还是 Hello World，或页面没更新
 
-表结构初始化只负责已有 D1 数据库内部的表，不能补建 Cloudflare 账户里的数据库资源。默认算术验证只需要上述三个密钥；Turnstile 是可选功能，启用时另行创建组件并填写两个 key。
+创建 Worker 后、发布 TelegramDoor 之前，Hello World 是正常状态。关联 Fork 后仍如此，请查看**最新提交**的部署日志，确认部署阶段成功，而不只是前端构建成功。
 
-当前本项目的一键部署仍待真实账户验收。本地构建、测试和 dry-run 不能验证 Cloudflare 控制台的仓库导入、账户授权及资源创建服务。
+同时确认正在访问正确的 Worker 地址、生产版本已切换到新部署，再刷新页面。保存密钥不会替代发布应用；更新上游也不会自动更新你的 Fork。[更新检查](updating.md#同步了但页面还是旧版)
 
-## Fork 与自动复制的区别
+## D1 不存在或权限错误
 
-推荐流程里的 Fork 是 GitHub 原生 Fork，仓库显示 `forked from maodeyu180/TelegramDoor`，后续可用 `Sync fork`。模板按钮创建的是独立副本，不会自动同步上游更新。点击 Fork 也不会把已有的独立副本变成关联源仓库的 Fork。[GitHub 同步说明](https://docs.github.com/en/pull-requests/how-tos/work-with-forks/syncing-a-fork)
+`D1 binding 'DB' references database '…' which was not found`（`10181`）表示发布引用的数据库在当前账户无法找到，与有没有建表、Telegram 或 Turnstile 无关。
 
-## 与公开模板的配置对照
+1. 确认 D1 实际位于 Worker 所属账户；不存在时才创建，已有数据的数据库不要删除。
+2. Worker 的绑定列表应有 `DB`，指向所需数据库。
+3. 查看正在构建的提交。旧副本里的固定 `database_id` 会优先于控制台绑定；用新版配置，或移除 `DB` 条目中的 `database_id` 和 `database_name` 再构建。
+4. 如果保留固定 ID 配置，必须核对它与自己账户的真实 ID 一致；固定 ID 是支持的高级用法，但不是默认教程的要求。
+5. 只有数据库和绑定都正确时，再检查权限和平台故障；不要根据错误码猜测购买付费套餐可以解决。
 
-以下对照的是各项目的**模板按钮路径**，TelegramDoor 的默认推荐入口已经改为 Fork 后导入已有仓库。2026-09-17 对照了公开源代码和部署文档。这是配置比较，不代表在同一账户完成了这些项目的部署实测，也不能推算按钮的整体成功率。
+如果出现 D1 API 权限错误，先检查是否仍写着 `database_name`，或旧部署命令还在执行远程迁移。新版推荐流程既不查 D1 名称，也不在构建中执行 SQL。
 
-| 项目                                                                                            | 是否要求提前 Fork      | D1 模板配置                                        | 建表与后续步骤                                            |
-| ----------------------------------------------------------------------------------------------- | ---------------------- | -------------------------------------------------- | --------------------------------------------------------- |
-| [Cloudflare D1 模板](https://github.com/cloudflare/templates/tree/main/d1-template)             | 按钮直接指向官方源仓库 | 同时提供 `binding`、`database_name`、`database_id` | `predeploy` 调用远程迁移                                  |
-| [Payload D1 模板](https://github.com/payloadcms/payload/tree/main/templates/with-cloudflare-d1) | 不要求                 | `database_id: "DATABASE_ID"` 占位值                | 发布脚本执行数据库迁移，再构建发布；还使用 R2             |
-| [web-monitor-rss](https://github.com/isitest1/web-monitor-rss/blob/main/QUICKSTART.md)          | 不要求，按钮复制源仓库 | `database_id` 为全零 UUID 占位值                   | 发布前远程迁移；发布后另填 Worker 密钥、GitHub Secrets 等 |
-| TelegramDoor                                                                                    | 不要求                 | 本次补齐全零 `database_id` 占位值，由向导替换      | 三个密钥由向导询问；发布后首次请求通过绑定建表            |
+初始化暂时失败并返回 HTTP 503 时，检查 D1 状态和用量后重试，不需要清空数据库。
 
-官方按钮文档要求为资源名称、资源 ID 等属性提供默认值。TelegramDoor 此前省略 `database_id`，这次按[官方要求](https://developers.cloudflare.com/workers/platform/deploy-buttons/#automatic-resource-provisioning)及 [web-monitor-rss 的配置](https://github.com/isitest1/web-monitor-rss/blob/main/wrangler.toml)补齐。占位值属于模板，不能拿它直接绑定生产 Worker；命令行/分步部署必须替换为自己的真实 ID。不要复制其他模板的实际数据库 ID。
+## 其他构建错误
 
-**这是模板兼容性修正，尚未证实是此前 D1 未创建的根因。** 此前失败副本已被向导写入非占位 ID，但同一 Cloudflare 账户没有对应数据库，说明还需要验证资源是否实际创建。先 Fork 不能代替这项验证。
-
-其他差异也不能混为一谈：
-
-- 本项目从仓库根目录部署，前后端属于同一个 npm 项目，没有跨目录 workspace 依赖；不涉及按钮截取 monorepo 子目录后丢失依赖的问题。
-- 其他模板在构建时迁移，本项目在运行时通过 `DB` 绑定初始化表结构，避免额外依赖构建令牌的 D1 编辑权限。建表时机不会解释发布时数据库资源不存在的问题。
-- Payload 模板注明因 Worker 包体大小需要 Workers Paid，这是该模板自身的限制，不是 D1 的收费门槛。TelegramDoor 不依赖 R2；D1 在 Workers Free 中有免费额度。[Payload 说明](https://github.com/payloadcms/payload/blob/main/templates/with-cloudflare-d1/README.md)、[D1 定价](https://developers.cloudflare.com/d1/platform/pricing/)
+| 现象                             | 处理                                                                   |
+| -------------------------------- | ---------------------------------------------------------------------- |
+| Worker 名称不匹配                | 部署命令用 `npm run deploy -- --name 实际Worker名称`。                 |
+| 找不到 `package.json` 或入口文件 | 检查 Fork 源码完整，根目录为 `/`。                                     |
+| Node/Vite 版本不支持             | 保留仓库的 `.node-version`，移除构建设置里旧的 `NODE_VERSION` 覆盖值。 |
+| 找不到 `dist`                    | 部署命令用 `npm run deploy`，它会先构建页面。                          |
+| 旧脚本执行 D1 迁移失败           | 更新到新版部署命令；当前通过运行时绑定自动初始化首版表结构。           |
 
 ## 仓库创建失败或源码不完整
 
-如果提示 `Cloudflare could not create the Git repository right now`，问题出在创建/导入 Git 仓库阶段，此时 Telegram Token、Turnstile 和程序里的建表代码还没有运行。
+`Cloudflare could not create the Git repository right now` 出现在模板的 Git 创建/导入阶段，此时 Telegram Token、Turnstile 和运行时建表代码还没有执行。
 
-1. 检查目标 GitHub 账号是否已有同名仓库，以及 Cloudflare 账号是否已有同名 Worker；测试时可以用一个未使用的名字。
-2. 在 GitHub「Settings → Applications → Installed GitHub Apps」检查 Cloudflare Workers and Pages 对目标账号/仓库的访问权限；组织账号还可能需要管理员批准。
-3. 检查刚创建出的仓库。至少应包含 `package.json`、`package-lock.json`、`src/`、`migrations/`、`wrangler.jsonc`。只有 `README.md` 和 Wrangler 配置时，源码导入没有完成，重新点构建也无法补齐源码。
+- 检查目标账号是否已有同名仓库，以及 GitHub 的 **Settings → Applications → Installed GitHub Apps** 中 Cloudflare 对仓库的访问授权。
+- 仓库应包含 `src/`、`migrations/`、`package.json`、`package-lock.json`、`wrangler.jsonc`。只有 README 和 Wrangler 配置时，源码导入不完整，重跑构建无法补齐。
+- Cloudflare 有[相同的不完整导入报告 #31](https://github.com/cloudflare/developer-platform/issues/31)，但通用错误信息不足以确认每次失败的根因。
 
-Cloudflare 上游有[源码导入不完整的报告 #31](https://github.com/cloudflare/developer-platform/issues/31)：生成仓库只有两个文件，提交为 `Initial commit` 和 `Uploading template.`；报告还列出了官方模板遇到相同现象的案例。截至 2026-09-17，该问题仍未关闭。这是相同现象的证据，不是对每次通用报错根因的确认；模板无法保证绕过 Cloudflare 的导入服务故障。
+持续失败就从源项目创建真正的 Fork，按推荐教程连接已有 Worker，不必反复删除仓库。
 
-本项目没有启用状态的 `.github/workflows/` 文件，以排除额外工作流写权限风险；这项预防措施并不能证明或修复所有导入失败。详细权限背景见[贡献指南](../CONTRIBUTING.md)。
+## 从失败的按钮部署继续
 
-持续失败时，可向 Cloudflare 支持提供失败时间、源仓库链接、生成仓库链接及上述提交记录。不要提供 Bot Token 或后台密码，也不必反复删除仓库。
+保留现有 Worker 和已有数据库：
 
-## 发布时提示 D1 不存在（10181）
+1. 检查源码是否完整。不完整时，从原项目[建立真正的 Fork](https://github.com/maodeyu180/TelegramDoor/fork)。
+2. 按[教程第 3 步](deployment-manual.md#3-创建并选择-d1)检查 `DB` 绑定，没有数据库才创建。
+3. 按[第 4 步](deployment-manual.md#4-保存三个运行时密钥)检查三个运行时密钥。
+4. 用新版配置关联原 Worker 并构建最新提交。需要从独立副本切换到 Fork 时，按[迁移说明](updating.md#已用旧按钮部署如何迁到-fork)操作。
 
-`D1 binding 'DB' references database '…' which was not found` 表示发布引用的数据库无法在当前账户找到。它与 Telegram Token、算术验证、Turnstile 或数据库里有没有表无关。
+旧副本若仍写着无效 `database_id`，仅添加控制台绑定无法覆盖它；先按上面的 [D1 排错](#d1-不存在或权限错误)处理。已正常使用的固定 ID 配置可以继续保留。
 
-1. 在 **Worker 所属的同一 Cloudflare 账户**打开 D1 列表，确认数据库是否实际存在。
-2. 对照部署者副本 `wrangler.jsonc` 的 `database_id` 和数据库详情页的 Database ID；不要拿源模板的占位值、账户 ID 或其他账户的数据库 ID 代替。
-3. 如果列表为空，自动资源创建没有完成；不应把配置里生成了 ID 当成创建成功。先检查日志中是否有更早的资源创建/权限错误。错误码本身不能确认失败的具体原因。
-4. 测试修正后的源模板时，需要让按钮重新复制最新源码。源仓库的更新不会自动进入已有副本，重跑旧提交也不会获得新配置；可换未使用的名称测试，不必删除已有资源。
-5. 持续失败时，按[分步教程](deployment-manual.md#从失败的按钮部署继续)复用完整副本和 Worker，手工补建并绑定 D1。如果资源实际存在且账户、ID 均一致仍报错，保留日志联系 Cloudflare 支持，不要反复删除数据库。
+---
 
-这些步骤用于定位或恢复，手工补建成功不能算作一键部署成功。D1 不要求先购买付费套餐；没有证据表明升级套餐能修复这次故障。
+以下内容供需要了解部署机制或其他方式的人查阅。
 
-## 已导入完整源码，但构建或启动失败
+## 为什么不再要求填写数据库 ID
 
-| 现象                                         | 检查与处理                                                                                                |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| 找不到 `package.json`、`src/worker/index.ts` | 检查源码是否完整，构建根目录是否为仓库根目录。                                                            |
-| Node/Vite 报版本不支持                       | 保留 `.node-version`；当前选择 Node.js 24。删除构建设置中冲突的旧 `NODE_VERSION` 覆盖值后重试。           |
-| 找不到 `dist` 或静态页面                     | 使用 `npm run deploy`，它自身包含前端构建；只运行 `wrangler deploy` 前必须先 `npm run build`。            |
-| 旧构建命令在 D1 迁移时报权限错误             | 更新源码并确认部署命令是新的 `npm run deploy`；当前版本已取消部署前的远程迁移，首次请求通过 D1 绑定建表。 |
-| 页面提示缺少三个配置                         | 在 Worker 的「变量和机密」配置运行时密钥。Build variables/secrets 只对构建过程可见。                      |
-| 页面提示缺少 `DB` 绑定                       | 检查资源绑定名是否严格为 `DB`，指向自己账户的 D1，并让 `wrangler.jsonc` 与实际绑定一致。                  |
-| 初始化暂时失败，HTTP 503                     | 稍后刷新；持续失败时检查 D1 绑定、数据库状态和额度。失败事务不会留下半套表结构，不需要清空数据库。        |
-| 页面仍是 Hello World                         | 检查完整源码是否真的构建成功并发布；占位 Worker 存在、密钥保存成功不等于应用已发布。                      |
+参考了 [ldc-shop 的 Workers 部署说明](https://github.com/chatgptuk/ldc-shop/blob/main/_workers_next/README.md#-部署指南)及其 [Wrangler 配置](https://github.com/chatgptuk/ldc-shop/blob/main/_workers_next/wrangler.json)，区别如下：
 
-当前运行时自动初始化只负责初始表结构。重新部署不会重置用户、封禁或后台设置；未来新增迁移需按对应版本升级说明执行。
+| 项目                      | 数据库创建与绑定                                                                 | 配置文件                                  | 建表             |
+| ------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------- | ---------------- |
+| ldc-shop 网页流程         | 先创建名为 `ldc-shop-next` 的 D1，由 Wrangler 按名称查找；其他名称按文档手动绑定 | 保留 `database_name`，省略 `database_id`  | 首次访问自动建表 |
+| TelegramDoor 原流程       | 创建 D1，复制 ID 到 Fork                                                         | 写死个人数据库 ID，更新时需要保留         | 首次访问自动建表 |
+| TelegramDoor 当前推荐流程 | 在控制台创建 D1，并从 Worker 的下拉框选中，绑定为 `DB`                           | 同时省略数据库名称和 ID，部署沿用已有绑定 | 首次访问自动建表 |
 
-官方参考：[构建配置、令牌权限与运行时变量](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)、[构建环境与 Node 版本](https://developers.cloudflare.com/workers/ci-cd/builds/build-image/)、[Worker 名称限制](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/#limitations)、[D1 事务批处理](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch)。
+ldc-shop 并没有省掉创建数据库，而是省掉了复制 ID。Wrangler 的[自动资源配置](https://developers.cloudflare.com/workers/wrangler/configuration/#automatic-provisioning)支持省略资源 ID；它也会优先尝试沿用已有绑定。
+
+TelegramDoor 进一步省略 `database_name`：在当前锁定的 Wrangler 中，指定名称会先查询 D1 API 核对名称，而只声明 `binding: "DB"` 可以直接沿用已保存的绑定。Cloudflare [默认构建令牌的权限列表](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/#api-token)未包含 D1 管理权限，所以推荐先在控制台绑定，再连接 Git。数据库名称可以自选，也不会因为不同机器人的名称相同而误连另一个数据库。
+
+配置中的 `keep_vars: true` 保留控制台设置的普通变量；Secret 也由 Wrangler 保留。表结构通过运行时 `DB` 绑定初始化，无需构建令牌调用 D1 SQL 迁移接口。每次部署只运行一次前端构建，因此教程中的单独构建命令留空。
+
+这些行为已做本地打包及模拟 Cloudflare API 验证；不等于已经在部署者账户完成网页验收。缺少预先保存的 `DB` 绑定时，不能承诺构建令牌自动创建数据库。
+
+## 能否直接自动创建 D1
+
+Wrangler 支持在没有资源 ID 时自动创建资源，命令行登录后可使用这一能力。通过 Git 构建自动创建还取决于令牌的资源权限。为了让网页部署者不用再配置 API Token，推荐流程采用一次下拉选择；后续构建沿用此选择。
+
+D1 提供免费额度，不需要为了使用它先购买 Workers Paid；当前 Free 限额包括每天 500 万行读取、10 万行写入，以及账户总计 5 GB 存储、单库最多 500 MB。超出免费额度会受到限制，不代表可以无限使用。参见 [D1 定价](https://developers.cloudflare.com/d1/platform/pricing/)和[限制](https://developers.cloudflare.com/d1/platform/limits/)。
+
+## 模板部署（可选）
+
+原模板入口保留供测试；当前推荐配置已改为沿用控制台绑定，**此入口尚未完成新版配置的真实账户验收**，请不要把它当作保证自动完成资源配置的主流程：
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fmaodeyu180%2FTelegramDoor)
+
+[Cloudflare 模板服务](https://developers.cloudflare.com/workers/platform/deploy-buttons/)会复制源码到独立仓库，通常没有 GitHub Fork 关系；即使把源地址换成自己的 Fork，也仍然会复制。它与在现有 Worker 的 **Settings → Builds → Connect** 选择仓库是两条流程。
+
+使用模板时，检查向导是否识别 `DB` 资源并提供创建/绑定选项，以及三个运行时密钥。以完整源码、真实存在的 D1、Worker 上正确的 `DB` 绑定、部署成功和 `/health` 正常为完成标准。仅生成一个资源 ID 或上传前端文件不代表完成。
+
+如果向导没有识别资源，或再次出现仓库创建、D1 创建失败，按[恢复步骤](#从失败的按钮部署继续)操作，复用已有 Worker 和数据。手动补建成功不能算作模板自动部署成功。
+
+旧版本为模板向导提供过全零 `database_id` 占位值，这个值不能用于真实发布。本次为简化 Fork 部署移除了它；此前向导生成了不存在的数据库 ID 的根因，仍没有被证实。
+
+[返回首页](../README.md) · [网页部署教程](deployment-manual.md) · [命令行部署](development.md#命令行部署)

@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "telegramdoor",
+  "keep_vars": true,
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-09-01",
   "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
@@ -13,10 +14,9 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "telegramdoor",
-      // Deploy to Cloudflare replaces this placeholder with a new database ID.
-      // For manual/CLI deployment, create D1 first and replace it with the real ID.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // Select a D1 database as DB in the dashboard before connecting Git.
+      // Omitting both name and ID lets Wrangler reuse that binding without D1 API access.
+      // CLI users can also let Wrangler provision a database on first deploy.
       "migrations_dir": "migrations",
     },
   ],

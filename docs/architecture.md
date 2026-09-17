@@ -39,13 +39,15 @@ Webhook 处理在返回 HTTP 200 之前完成，不把关键消息发送丢入�
 
 Turnstile Secret 以 AES-GCM 加密存入 D1，密钥通过 Bot Token 的 HMAC 派生。绑定 `hostname`、`action=telegramdoor` 与 `cdata=challengeId`。挑战通过条件 DELETE 一次性消费，并且只对未封禁、未冷却用户设置验证有效期。修改验证方式会使旧方式的挑战无法继续使用。
 
+验证链接的凭证放在 URL fragment，浏览器不会把它作为页面路径发送或带入 Referer。
+
 Turnstile 服务端密钥配置错误和服务端故障不消耗用户验证次数。密钥错误/过期与网络失败必须在真实部署中实测。
 
 ## 登录和部署
 
 三个用户提供的配置：`ADMIN_PASSWORD`、`BOT_TOKEN`、`OWNER_ID`。Webhook Secret 独立 HMAC 派生，无需第四个用户配置。Worker 同源托管 UI，前端不持有 Telegram 或 Cloudflare 凭据。
 
-推荐在 GitHub Fork，再由 Cloudflare 导入已有仓库。部署者创建 D1 并将 Fork 配置的 `database_id` 占位值替换为真实 ID；后续 Sync fork 后触发 Git 构建，合并配置时保留自己的 Worker 名称和数据库绑定。可选模板按钮会自动复制源码并创建资源，但生成的独立副本没有 GitHub Fork 关系。部署脚本只构建与发布，不依赖构建令牌的 D1 迁移接口权限。第一次 API/健康检查请求或定时清理，通过 `DB` 绑定执行 `0001_initial.sql` 的建表语句；表结构和 Wrangler 兼容的 `d1_migrations` 标记在同一 D1 batch 事务中提交。重复和并发初始化不会清空数据，失败则回滚并允许下次请求重试。非法 Webhook 在访问数据库前就被拒绝。
+推荐在 GitHub Fork，先在 Cloudflare 创建 Worker、选择 D1 绑定并保存密钥，再关联已有 Worker 的 Git 构建。源配置不包含数据库名称和 ID，Wrangler 沿用 Worker 上的 `DB` 绑定，无需查询 D1 管理 API；`keep_vars: true` 保留控制台普通变量。后续 Sync fork 触发构建，无需在 Fork 维护个人资源 ID。自定义 Worker 名称通过部署命令的 `--name` 指定。可选模板入口另需真实账户验收，不能将模板复制与 GitHub Fork 混为一谈。部署脚本只构建与发布，不依赖构建令牌的 D1 迁移接口权限。第一次 API/健康检查请求或定时清理，通过 `DB` 绑定执行 `0001_initial.sql` 的建表语句；表结构和 Wrangler 兼容的 `d1_migrations` 标记在同一 D1 batch 事务中提交。重复和并发初始化不会清空数据，失败则回滚并允许下次请求重试。非法 Webhook 在访问数据库前就被拒绝。
 
 每个运行实例只缓存已完成的初始化，不跨请求共享正在执行的 D1 Promise。自动初始化只适用于已发布的、幂等的初始建表文件；未来 schema 变更需要新增迁移和升级方案，不会在请求中自动执行任意新增 SQL。已用 Wrangler 迁移的旧数据库可直接使用；运行时初始化的数据库也可继续使用 `npm run db:remote` 执行后续经审核的迁移。
 

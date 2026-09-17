@@ -5,19 +5,19 @@
 ## 部署
 
 - [ ] 按[Fork 部署教程](deployment-manual.md)创建真正的 Fork，仓库显示 `forked from maodeyu180/TelegramDoor`。
-- [ ] README 的 Cloudflare 入口打开控制台，可以选择自己的 Fork 导入，不会再次复制模板。
-- [ ] 创建专用 D1，Fork 配置中的全零 `database_id` 已替换为真实 ID。
+- [ ] README 的 Cloudflare 入口打开控制台，在已有 Worker 的 Settings → Builds 选择自己的 Fork，不会再次复制模板。
+- [ ] 创建专用 D1，在 Worker 控制台选择并保存为 `DB`；无需编辑 Fork 或复制 ID。
 - [ ] 仓库包含 `src/`、`package.json`、`package-lock.json` 和 `migrations/`；只有 README 和 Wrangler 配置时按教程处理。
-- [ ] D1 数据库实际存在于 Worker 所在账户，配置中的 `database_id` 与详情页一致；只有生成 ID 不算创建成功。
-- [ ] Worker 名称与 `wrangler.jsonc` 的 `name` 一致，部署命令为 `npm run deploy`。
+- [ ] D1 数据库实际存在于 Worker 所在账户，Worker 的 `DB` 指向该数据库；只有生成 ID 不算创建成功。
+- [ ] 默认 Worker 名称使用 `telegramdoor`；自定义名称用部署命令 `npm run deploy -- --name 实际名称`，不需要修改 Fork。构建命令留空。
 - [ ] 三个密钥保存到 Worker 运行时「变量和机密」，名称无多余空格，生产部署已生效。
 - [ ] 确认 D1 已创建、绑定名是 `DB`；无需额外 D1 API Token 或手工运行 SQL，首次访问 `/health` 返回 `ok: true`。
 - [ ] 后台能登录；刷新保持登录；退出后原 Cookie 无法访问 API。
-- [ ] 再次部署后，已有设置、封禁和消息对应关系仍保留。
+- [ ] 再次部署后，已有设置、封禁、消息对应关系、DB 绑定和控制台变量/密钥仍保留。
 - [ ] 所有管理页面和手机布局正常；HTTPS 静态资源与 API 不报 CSP 错误。
 - [ ] 管理员向机器人 `/start` 后，在后台连接并检查 Webhook，URL 指向自己的域名。
 
-- [ ] Sync fork 后触发最新提交的构建，原 Worker 名称、数据库 ID、设置和数据保持正确；按[更新说明](updating.md)处理配置冲突。
+- [ ] Sync fork 后触发最新提交的构建，原 Worker 名称、数据库绑定、设置和数据保持正确；按[更新说明](updating.md)处理旧版固定 ID 配置。
 - [ ] 从独立副本迁到 Fork 时复用原 Worker 和 D1，运行时密钥仍生效。
 
 ## 可选模板部署
