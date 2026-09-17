@@ -6,6 +6,8 @@
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fmaodeyu180%2FTelegramDoor)
 
+想保留本文档对照部署？按住 **⌘（Mac）/ Ctrl（Windows、Linux）** 再点击部署按钮，或右键选择「在新标签页中打开链接」；手机可长按按钮选择新标签页。GitHub README 不支持通过 `target="_blank"` 强制链接在新标签页打开。
+
 > 本项目仍处于首个版本。自动化测试使用本地 Workers/D1 和模拟 Telegram API；正式使用前，请完成下面的真实账号验收。不要把聊天内算术题视为强人机验证，持续收到广告时建议启用 Turnstile。
 
 ## 功能
@@ -35,6 +37,8 @@ D1 的 `DB` 是资源绑定，不是第四个需要手工提供的密钥。启�
 
 ### 浏览器部署
 
+已有机器人曾接入其他双向服务？请先阅读[从其他双向机器人迁移](#从其他双向机器人迁移)，撤销旧 Token 后使用新 Token 部署。
+
 1. 注册/登录 Cloudflare 和 GitHub，准备三个必填配置。
 2. 点击上方 **Deploy to Cloudflare**，按向导创建自己的仓库与 Worker，填写三个配置。
 3. 模板使用 `npm run deploy` 构建后台、应用 D1 migrations 并部署 Worker。请保留模板的自定义部署命令；只执行 `wrangler deploy` 不会初始化表结构。
@@ -47,7 +51,7 @@ Cloudflare 的部署按钮支持 D1 自动创建和密钥提示，配置来源�
 
 **只填三个配置就能用吗？** 默认聊天内算术验证可以。部署完成后还需给机器人发送 `/start`，并登录后台点击「连接 Telegram」。不需要准备 Turnstile 密钥，也不需要手动创建数据库。
 
-**Turnstile 也会自动创建吗？** 当前不会。部署按钮目前支持的自动创建资源不包含 Turnstile；启用它需要按下一节创建组件并填写两个密钥。Cloudflare 提供创建组件的 API，但需要额外的账户 ID 和具备 Turnstile 编辑权限的 API Token，无法只凭上面的三个配置完成。这个版本采用手动配置，不要求将 Cloudflare 账户管理凭据交给机器人。参见 [部署按钮支持的资源](https://developers.cloudflare.com/workers/platform/deploy-buttons/#automatic-resource-provisioning) 和 [Turnstile 自动化接口](https://developers.cloudflare.com/turnstile/get-started/widget-management/api/)。
+**Turnstile 也会自动创建吗？** 当前不会。部署按钮目前支持的自动创建资源不包含 Turnstile；启用它需要按[使用 Turnstile](#使用-turnstile)创建组件并填写两个密钥。Cloudflare 提供创建组件的 API，但需要额外的账户 ID 和具备 Turnstile 编辑权限的 API Token，无法只凭上面的三个配置完成。这个版本采用手动配置，不要求将 Cloudflare 账户管理凭据交给机器人。参见 [部署按钮支持的资源](https://developers.cloudflare.com/workers/platform/deploy-buttons/#automatic-resource-provisioning) 和 [Turnstile 自动化接口](https://developers.cloudflare.com/turnstile/get-started/widget-management/api/)。
 
 ### 命令行部署
 
@@ -80,6 +84,24 @@ npm run deploy
 之后完成上面第 4～7 步。Webhook 注册在登录后的管理后台触发，不提供公开的 `/setup` 后门。
 
 如果修改了机器人 Token 或域名，请重新连接 Telegram。**修改 Bot Token 后也需要在后台重新输入 Turnstile Secret**：它的加密密钥由 Bot Token 派生，旧密文不能用新 Token 解密。修改管理员密码会让现有登录会话失效。
+
+## 从其他双向机器人迁移
+
+如果机器人是你自己在 BotFather 创建的，可以保留原机器人和用户名，不需要找到之前接入的双向服务。建议先撤销旧 Token，再把消息接收地址切换到 TelegramDoor；只更换接收地址，仍持有有效 Token 的旧服务就仍能控制机器人。
+
+1. 打开官方 [@BotFather](https://t.me/BotFather)，发送 `/mybots`，选择要迁移的机器人。
+2. 进入 **API Token → Revoke current token**，按提示撤销旧 Token 并获取新 Token。旧服务持有的 Token 随即失效；迁移期间机器人会暂时无法正常处理消息。
+3. 首次部署 TelegramDoor 时，将新 Token 填入 `BOT_TOKEN`。如果已经部署，在 Cloudflare 中打开对应 Worker 的「设置 → 变量和机密」，修改 `BOT_TOKEN` 并保存、部署，使新配置生效。
+4. 使用管理员账号打开机器人，发送 `/start`，然后登录 TelegramDoor 后台，在「防护设置」点击 **连接 Telegram → 检查连接**。这会设置新的 Webhook，替换旧接收地址，无需先调用 `deleteWebhook`。
+5. 用另一个 Telegram 账号发送消息、完成验证，再由管理员引用回复，确认双向通信正常。
+
+如果之前已经在 TelegramDoor 配置了 Turnstile，换 Bot Token 后还需要重新填写一次 **Turnstile Secret key** 并保存；Site key 和 Turnstile 组件本身无需重建。
+
+旧服务里的黑名单、验证状态和消息对应关系不会自动迁移。请让访客重新发一条消息后再引用回复，旧服务转发的历史消息不能直接用于 TelegramDoor 的回复和管理命令。更换 Token 也不会删除旧服务已经保存的数据。
+
+如果机器人由第三方管理机器人代为创建，并仍有管理授权，还需要在 BotFather 中解除对应的管理授权；仅轮换 Token 不等于解除管理权限。如果机器人不属于你、无法在 BotFather 管理，请先创建自己的机器人。
+
+官方参考：[Token 管理](https://core.telegram.org/bots/tutorial#obtain-your-bot-token)、[设置 Webhook](https://core.telegram.org/bots/api#setwebhook)、[托管机器人机制](https://core.telegram.org/bots/features#managed-bots)。
 
 ## 使用 Turnstile
 
