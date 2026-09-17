@@ -49,6 +49,10 @@ D1 的 `DB` 是资源绑定，不是第四个需要手工提供的密钥。启�
 
 Cloudflare 的部署按钮支持 D1 自动创建和密钥提示，配置来源分别是 `wrangler.jsonc` 和 `.dev.vars.example`。首次云端部署仍需登录、授权和填写自己的密钥；本仓库不提供共享机器人服务。
 
+**Project name 可以保留 `telegramdoor` 吗？** 可以。其他人的 GitHub 账号可以创建同名仓库，名称不需要全网唯一；同一个账号内已有同名仓库时，需要换一个未使用的名字。创建失败的尝试也可能留下一个只有 `README.md`、`wrangler.jsonc` 的不完整仓库，它不能直接用于部署。完整项目应包含 `package.json`、`src/` 和 `migrations/`。
+
+如果提示 `Cloudflare could not create the Git repository right now`，表示创建或填充 Git 仓库的步骤没有完成，不是机器人已运行后的错误。先确认 Cloudflare Workers and Pages GitHub App 对目标账号、仓库有访问权限；重试时使用未被占用的仓库名。模板不包含启用状态的 GitHub Actions 工作流，避免复制 `.github/workflows/` 时触发额外的工作流写权限要求；需要 CI 的开发者可按[贡献指南](CONTRIBUTING.md)自行启用。仅凭这条通用错误不能确认具体原因，持续失败时可联系 Cloudflare 支持，或使用下面的命令行部署方式。
+
 **只填三个配置就能用吗？** 默认聊天内算术验证可以。部署完成后还需给机器人发送 `/start`，并登录后台点击「连接 Telegram」。不需要准备 Turnstile 密钥，也不需要手动创建数据库。
 
 **Turnstile 也会自动创建吗？** 当前不会。部署按钮目前支持的自动创建资源不包含 Turnstile；启用它需要按[使用 Turnstile](#使用-turnstile)创建组件并填写两个密钥。Cloudflare 提供创建组件的 API，但需要额外的账户 ID 和具备 Turnstile 编辑权限的 API Token，无法只凭上面的三个配置完成。这个版本采用手动配置，不要求将 Cloudflare 账户管理凭据交给机器人。参见 [部署按钮支持的资源](https://developers.cloudflare.com/workers/platform/deploy-buttons/#automatic-resource-provisioning) 和 [Turnstile 自动化接口](https://developers.cloudflare.com/turnstile/get-started/widget-management/api/)。
@@ -182,7 +186,7 @@ npm run build
 npx wrangler deploy --dry-run --outdir .local/worker
 ```
 
-自动化测试在 Workers 运行时使用本地 D1，模拟 Telegram 与 Turnstile HTTP 响应。测试覆盖鉴权、CSRF、去重、消息映射、编辑过滤、验证码绑定/过期/重放、封禁、限频、双方回应、Turnstile 服务端核验、时间过滤和清理。CI 不包含部署操作。
+自动化测试在 Workers 运行时使用本地 D1，模拟 Telegram 与 Turnstile HTTP 响应。测试覆盖鉴权、CSRF、去重、消息映射、编辑过滤、验证码绑定/过期/重放、封禁、限频、双方回应、Turnstile 服务端核验、时间过滤和清理。[可选 CI 示例](docs/examples/github-actions-ci.yml)不包含部署操作，启用方法见[贡献指南](CONTRIBUTING.md)。
 
 目录：
 
