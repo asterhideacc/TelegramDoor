@@ -628,6 +628,14 @@ describe('verification and anti-spam', () => {
     const challenge = (await env.DB.prepare('SELECT * FROM challenges').first<Challenge>())!;
     await callback(userId, `v:${challenge.id}:${challenge.answer}`, 9);
     expect((await getUser(env, userId))!.verified_until).toBeGreaterThan(now());
+    expect(calls.find((c) => c.method === 'editMessageText')!.body).toEqual({
+      chat_id: userId,
+      message_id: 9,
+      text: expect.stringContaining('✅ 验证通过'),
+      reply_markup: { inline_keyboard: [] },
+    });
+    // A successful edit is the persistent confirmation; no extra message is needed.
+    expect(calls.filter((c) => c.method === 'sendMessage')).toHaveLength(1);
     expect(calls.some((c) => c.method === 'forwardMessage' || c.method === 'copyMessage')).toBe(
       false,
     );
@@ -640,10 +648,15 @@ describe('verification and anti-spam', () => {
     await touchUser(env, { id: 100002, first_name: 'Other' });
     await callback('100002', `v:${challenge.id}:${challenge.answer}`, 9);
     expect((await getUser(env, '100002'))!.verified_until).toBe(0);
+    expect(calls.some((c) => c.method === 'editMessageText')).toBe(false);
     await callback(userId, `v:${challenge.id}:${challenge.answer}`, 9);
     const expiry = (await getUser(env, userId))!.verified_until;
     await callback(userId, `v:${challenge.id}:${challenge.answer}`, 9);
     expect((await getUser(env, userId))!.verified_until).toBe(expiry);
+    expect(calls.filter((c) => c.method === 'editMessageText')).toHaveLength(1);
+    expect(calls.filter((c) => c.method === 'answerCallbackQuery').at(-1)!.body.text).toContain(
+      '已通过验证',
+    );
     expect(
       (
         await env.DB.prepare("SELECT COUNT(*) AS n FROM events WHERE status='verified'").first<{
@@ -652,11 +665,63 @@ describe('verification and anti-spam', () => {
       )?.n,
     ).toBe(1);
   });
+  it('sends a visible verification result when the original prompt cannot be edited', async () => {
+    await webhook({ message: msg(userId, '/verify') });
+    const challenge = (await env.DB.prepare('SELECT * FROM challenges').first<Challenge>())!;
+    calls = [];
+    telegramFailure = {
+      method: 'editMessageText',
+      code: 400,
+      description: 'Bad Request: message to edit not found',
+    };
+    expect((await callback(userId, `v:${challenge.id}:${challenge.answer}`, 9)).status).toBe(200);
+    expect(calls.find((c) => c.method === 'sendMessage')!.body).toMatchObject({
+      chat_id: userId,
+      text: expect.stringContaining('✅ 验证通过'),
+    });
+    expect((await getUser(env, userId))!.verified_until).toBeGreaterThan(now());
+    expect(await env.DB.prepare('SELECT * FROM challenges').first()).toBeNull();
+    calls = [];
+    await callback(userId, `v:${challenge.id}:${challenge.answer}`, 9);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].method).toBe('answerCallbackQuery');
+  });
+  it('keeps successful verification when callback acknowledgement expires', async () => {
+    await webhook({ message: msg(userId, '/verify') });
+    const challenge = (await env.DB.prepare('SELECT * FROM challenges').first<Challenge>())!;
+    telegramFailure = {
+      method: 'answerCallbackQuery',
+      code: 400,
+      description: 'Bad Request: query is too old',
+    };
+    expect((await callback(userId, `v:${challenge.id}:${challenge.answer}`, 9)).status).toBe(200);
+    expect(calls.find((c) => c.method === 'editMessageText')!.body.text).toContain('✅ 验证通过');
+    expect((await getUser(env, userId))!.verified_until).toBeGreaterThan(now());
+    calls = [];
+    await webhook({ message: msg(userId, '重新发送留言') });
+    expect(calls.map((c) => c.method)).toEqual(['forwardMessage']);
+  });
+  it('does not send duplicate confirmations when the prompt already has the result', async () => {
+    await webhook({ message: msg(userId, '/verify') });
+    const challenge = (await env.DB.prepare('SELECT * FROM challenges').first<Challenge>())!;
+    calls = [];
+    telegramFailure = {
+      method: 'editMessageText',
+      code: 400,
+      description: 'Bad Request: message is not modified',
+    };
+    expect((await callback(userId, `v:${challenge.id}:${challenge.answer}`, 9)).status).toBe(200);
+    expect(calls.some((c) => c.method === 'sendMessage')).toBe(false);
+    expect((await getUser(env, userId))!.verified_until).toBeGreaterThan(now());
+  });
   it('expires challenges and imposes cooldown after three wrong attempts', async () => {
     for (let i = 0; i < 3; i++) {
       await webhook({ message: msg(userId, '/verify') });
       const challenge = (await env.DB.prepare('SELECT * FROM challenges').first<Challenge>())!;
       await callback(userId, `v:${challenge.id}:wrong`, 9);
+      const result = calls.filter((c) => c.method === 'editMessageText').at(-1)!.body;
+      expect(result.text).toContain(i === 2 ? '验证暂时锁定' : '答案不正确');
+      expect(result.reply_markup).toEqual({ inline_keyboard: [] });
     }
     expect((await getUser(env, userId))!.cooldown_until).toBeGreaterThan(now());
     await webhook({ message: msg(userId, '/verify') });
@@ -670,6 +735,12 @@ describe('verification and anti-spam', () => {
       .run();
     await callback(userId, `v:${challenge.id}:${challenge.answer}`, 9);
     expect((await getUser(env, userId))!.verified_until).toBe(0);
+    expect(calls.find((c) => c.method === 'editMessageText')!.body).toMatchObject({
+      chat_id: userId,
+      message_id: 9,
+      text: expect.stringContaining('这道题已过期'),
+      reply_markup: { inline_keyboard: [] },
+    });
   });
   it('resets failure counts after the cooldown has elapsed', async () => {
     await touchUser(env, { id: Number(userId), first_name: 'Cooldown' });

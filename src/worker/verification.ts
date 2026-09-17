@@ -2,7 +2,7 @@ import type { Person } from '../shared/types';
 import type { BotContext, Challenge } from './types';
 import { isBanned, now, randomToken } from './security';
 import { getUser, getValue, logEvent, takeRate } from './store';
-import { sendText } from './telegram';
+import { sendText, telegram, TelegramError } from './telegram';
 
 export async function issueChallenge(ctx: BotContext, user: Person): Promise<void> {
   const { env, settings } = ctx,
@@ -120,23 +120,69 @@ export async function nativeVerify(
   userId: string,
   id: string,
   answer: string,
-): Promise<string> {
+): Promise<{ text: string; updateMessage?: boolean }> {
   const user = await getUser(ctx.env, userId);
-  if (!user || isBanned(user)) return '暂时无法验证。';
-  if (ctx.settings.verification !== 'native') return '验证方式已更新，请发送 /verify 重新验证。';
-  if (user.cooldown_until > now()) return '验证尝试过多，请稍后再试。';
+  if (!user || isBanned(user)) return { text: '暂时无法验证。' };
+  if (ctx.settings.verification !== 'native')
+    return { text: '验证方式已更新，请发送 /verify 重新验证。' };
+  if (user.cooldown_until > now()) return { text: '验证尝试过多，请稍后再试。' };
   const challenge = await ctx.env.DB.prepare(
     "SELECT * FROM challenges WHERE id=? AND user_id=? AND kind='native'",
   )
     .bind(id, userId)
     .first<Challenge>();
-  if (!challenge || challenge.expires_at <= now())
-    return '验证已过期或已使用，请发送 /verify 重新获取。';
+  if (!challenge)
+    return {
+      text:
+        user.trusted || user.verified_until > now()
+          ? '你已通过验证，可以直接发送留言。'
+          : '验证已过期或已使用，请发送 /verify 重新获取。',
+    };
+  if (challenge.expires_at <= now())
+    return { text: '⌛ 这道题已过期\n\n请发送 /verify 获取新题。', updateMessage: true };
   if (challenge.answer !== answer) {
     await failChallenge(ctx, id, userId);
-    return '答案不正确，请发送 /verify 重试。连续失败 3 次将冷却 15 分钟。';
+    const current = await getUser(ctx.env, userId);
+    return {
+      text:
+        current && current.cooldown_until > now()
+          ? '⏳ 验证暂时锁定\n\n连续答错 3 次，请在 15 分钟后发送 /verify 重试。'
+          : '❌ 答案不正确\n\n请发送 /verify 获取新题。连续答错 3 次将冷却 15 分钟。',
+      updateMessage: true,
+    };
   }
   return (await completeChallenge(ctx, id, userId, 'native', answer))
-    ? '验证通过！请重新发送你的留言。'
-    : '验证已失效，请重试。';
+    ? {
+        text: '✅ 验证通过\n\n现在可以发送留言了。验证前的消息未转发，请重新发送。',
+        updateMessage: true,
+      }
+    : { text: '验证已失效，请重试。' };
+}
+
+export async function updateChallengeMessage(
+  ctx: BotContext,
+  userId: string,
+  messageId: number,
+  text: string,
+): Promise<void> {
+  try {
+    await telegram(ctx.env, 'editMessageText', {
+      chat_id: userId,
+      message_id: messageId,
+      text,
+      reply_markup: { inline_keyboard: [] },
+    });
+    return;
+  } catch (error) {
+    if (error instanceof TelegramError && error.description.includes('message is not modified'))
+      return;
+  }
+  // Verification is already stored. A missing/uneditable prompt must not undo it
+  // or replay a consumed challenge; send a persistent result as a best-effort fallback.
+  try {
+    if (await takeRate(ctx.env, `verify-result:${userId}:${messageId}`, 1, 60))
+      await sendText(ctx.env, userId, text);
+  } catch {
+    // The callback acknowledgement still carries the result if both message APIs fail.
+  }
 }

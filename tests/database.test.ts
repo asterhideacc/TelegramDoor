@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker, { app } from '../src/worker/index';
 import { ensureDatabase } from '../src/worker/database';
 import type { Env } from '../src/worker/types';
+import { derivedSecret, now } from '../src/worker/security';
 
 const bindingsEnv = bindings as unknown as Env & {
   TEST_MIGRATIONS: Parameters<typeof applyD1Migrations>[1];
@@ -103,6 +104,50 @@ describe('deployment database bootstrap', () => {
     expect(
       await env.DB.prepare("SELECT value FROM settings WHERE key='sentinel'").first('value'),
     ).toBe('keep');
+  });
+
+  it('keeps visitor verification after a cold start against the same database', async () => {
+    await ensureDatabase(env.DB);
+    const expires = now() + 30 * 86400;
+    await env.DB.prepare(
+      'INSERT INTO users(id,name,first_seen,last_seen,verified_until) VALUES(?,?,?,?,?)',
+    )
+      .bind('100001', '已验证访客', now(), now(), expires)
+      .run();
+    const requests: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      requests.push(String(input));
+      return Response.json({ ok: true, result: { message_id: 500 } });
+    });
+    const restarted = { ...env, DB: freshBinding() };
+    const response = await app.request(
+      `${origin}/webhook`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-telegram-bot-api-secret-token': await derivedSecret(restarted, 'webhook'),
+        },
+        body: JSON.stringify({
+          update_id: 100,
+          message: {
+            message_id: 10,
+            chat: { id: 100001, type: 'private' },
+            from: { id: 100001, first_name: '已验证访客' },
+            text: '部署后继续聊天',
+          },
+        }),
+      },
+      restarted,
+    );
+    expect(response.status).toBe(200);
+    expect(requests).toEqual([`https://api.telegram.org/bot${env.BOT_TOKEN}/forwardMessage`]);
+    expect(
+      await env.DB.prepare("SELECT verified_until FROM users WHERE id='100001'").first(
+        'verified_until',
+      ),
+    ).toBe(expires);
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM challenges').first('n')).toBe(0);
   });
 
   it('tolerates concurrent cold starts and keeps a single migration record', async () => {

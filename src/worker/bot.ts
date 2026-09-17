@@ -12,7 +12,7 @@ import {
   takeRate,
   touchUser,
 } from './store';
-import { issueChallenge, nativeVerify } from './verification';
+import { issueChallenge, nativeVerify, updateChallengeMessage } from './verification';
 import { sendText, telegram, TelegramError } from './telegram';
 
 const help = `TelegramDoor 使用说明\n\n引用机器人转发给你的访客消息，输入回复，即可发给对应访客。未引用访客消息的普通消息会被静默忽略；命令照常处理。\n\n/ban [用户ID] [1h/1d/7d] [原因] — 封禁（可回复消息）\n/unban [用户ID] — 解封\n/trust [用户ID] — 加入白名单\n/untrust [用户ID] — 移出白名单\n/reset [用户ID] — 要求重新验证\n/who [用户ID] — 查看用户\n/react 👍 — 回复消息添加回应\n/react clear — 撤销回应\n/stats — 最近24小时统计\n/pause — 暂停接收\n/resume — 恢复接收\n\n双方都可引用消息发送 /react 表情。私聊长按产生的原生表情事件不会推送给机器人，无法自动同步。`;
@@ -247,8 +247,12 @@ async function callback(ctx: BotContext, query: Callback): Promise<void> {
       return;
     }
     const data = (query.data || '').split(':');
-    if (data[0] === 'v') response = await nativeVerify(ctx, userId, data[1] || '', data[2] || '');
-    else if (data[0] === 'r') {
+    if (data[0] === 'v') {
+      const result = await nativeVerify(ctx, userId, data[1] || '', data[2] || '');
+      response = result.text;
+      if (result.updateMessage)
+        await updateChallengeMessage(ctx, userId, query.message.message_id, result.text);
+    } else if (data[0] === 'r') {
       const link = await env.DB.prepare('SELECT * FROM message_links WHERE id=?')
         .bind(data[1] || '')
         .first<Link>();

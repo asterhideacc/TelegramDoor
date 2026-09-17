@@ -23,6 +23,8 @@
 
 构建设置统一为：根目录 `/`，构建命令 `npm run build`，部署命令 `npx wrangler deploy`。Worker 使用自定义名称时，部署命令用 `npx wrangler deploy --name 实际Worker名称`。三个运行时密钥继续保留在 Worker 设置中。
 
+访客验证状态也保存在 D1，默认有效期 30 天。继续使用原数据库时，更新部署不会清空验证状态，不需要访客每次重新答题。若更新后所有人都变成未验证，先检查 `DB` 是否误绑定到了另一数据库。
+
 修改过代码或配置、出现合并冲突时，保留有用改动并解决冲突，不要直接丢弃个人提交。**Sync fork 不会持续自动同步上游**；每次手动同步产生的新提交，才会触发 Cloudflare 自动部署。
 
 官方说明：[GitHub 同步 Fork](https://docs.github.com/en/pull-requests/how-tos/work-with-forks/syncing-a-fork)、[Cloudflare Git 构建](https://developers.cloudflare.com/workers/ci-cd/builds/)。
