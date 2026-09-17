@@ -271,7 +271,7 @@ describe('webhook delivery and mapping', () => {
       (await env.DB.prepare('SELECT COUNT(*) AS n FROM updates').first<{ n: number }>())?.n,
     ).toBe(0);
   });
-  it('copies inbound media with controls and deduplicates delivered updates', async () => {
+  it('forwards inbound media natively without added controls and deduplicates updates', async () => {
     await verified();
     const message = msg(userId, undefined, 100, {
       text: undefined,
@@ -279,10 +279,14 @@ describe('webhook delivery and mapping', () => {
     });
     expect((await webhook({ update_id: 42, message })).status).toBe(200);
     expect((await webhook({ update_id: 42, message })).status).toBe(200);
-    const copies = calls.filter((c) => c.method === 'copyMessage');
-    expect(copies).toHaveLength(1);
-    expect(copies[0].body.chat_id).toBe(env.OWNER_ID);
-    expect(copies[0].body.reply_markup.inline_keyboard).toHaveLength(3);
+    const forwards = calls.filter((c) => c.method === 'forwardMessage');
+    expect(forwards).toHaveLength(1);
+    expect(forwards[0].body).toEqual({
+      chat_id: env.OWNER_ID,
+      from_chat_id: userId,
+      message_id: 100,
+    });
+    expect(calls).toHaveLength(1);
     expect(
       (
         await env.DB.prepare("SELECT COUNT(*) AS n FROM events WHERE status='delivered'").first<{
@@ -299,6 +303,8 @@ describe('webhook delivery and mapping', () => {
     await webhook({ message: ownerMessage });
     const out = calls.filter((c) => c.method === 'copyMessage').at(-1)!.body;
     expect(out.chat_id).toBe(userId);
+    expect(out.reply_markup).toBeUndefined();
+    expect(calls.filter((c) => c.method === 'forwardMessage')).toHaveLength(1);
     expect(out.reply_parameters.message_id).toBe(link.source_message);
     const ownerLink = (await env.DB.prepare(
       'SELECT * FROM message_links WHERE source_message=777',
@@ -308,9 +314,26 @@ describe('webhook delivery and mapping', () => {
         reply_to_message: msg(userId, '', ownerLink.target_message),
       }),
     });
-    expect(
-      calls.filter((c) => c.method === 'copyMessage').at(-1)!.body.reply_parameters.message_id,
-    ).toBe(777);
+    // Native forwards have attribution but cannot carry reply_parameters.
+    expect(calls.filter((c) => c.method === 'forwardMessage').at(-1)!.body).toEqual({
+      chat_id: env.OWNER_ID,
+      from_chat_id: userId,
+      message_id: 778,
+    });
+    const followUp = (await env.DB.prepare(
+      'SELECT * FROM message_links WHERE source_chat=? AND source_message=778',
+    )
+      .bind(userId)
+      .first<Link>())!;
+    await webhook({
+      message: msg(env.OWNER_ID, '继续回复', 779, {
+        reply_to_message: msg(env.OWNER_ID, '', followUp.target_message),
+      }),
+    });
+    expect(calls.filter((c) => c.method === 'copyMessage').at(-1)!.body).toMatchObject({
+      chat_id: userId,
+      reply_parameters: { message_id: 778 },
+    });
   });
   it('does not guess recipients and rejects spoofed owner identity', async () => {
     await incoming();
@@ -321,7 +344,99 @@ describe('webhook delivery and mapping', () => {
         from: { id: Number(env.OWNER_ID), first_name: 'fake' },
       }),
     });
-    expect(calls.some((c) => c.method === 'copyMessage')).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+  it('silently discards unquoted owner text and media even after talking to different visitors', async () => {
+    const first = await incoming();
+    await verified('100002');
+    await webhook({ message: msg('100002', '另一位访客', 50) });
+    await webhook({
+      message: msg(env.OWNER_ID, '明确回复第一位访客', 777, {
+        reply_to_message: msg(env.OWNER_ID, '', first.target_message),
+      }),
+    });
+    const countLinks = () =>
+      env.DB.prepare('SELECT COUNT(*) AS n FROM message_links').first<{ n: number }>();
+    const countEvents = () =>
+      env.DB.prepare('SELECT COUNT(*) AS n FROM events').first<{ n: number }>();
+    const linksBefore = await countLinks();
+    const eventsBefore = await countEvents();
+    calls = [];
+    const direct = msg(env.OWNER_ID, '不要发送给最近聊天的人', 778);
+    await webhook({ message: direct });
+    await webhook({ edited_message: { ...direct, text: '修改也不能触发发送' } });
+    await webhook({
+      message: msg(env.OWNER_ID, '', undefined, {
+        text: undefined,
+        photo: [{ file_id: 'owner-photo' }],
+      }),
+    });
+    await webhook({
+      message: msg(env.OWNER_ID, '', undefined, {
+        text: undefined,
+        voice: { file_id: 'owner-voice' },
+      }),
+    });
+    await webhook({
+      message: msg(env.OWNER_ID, '管理员自己转发过来的消息', undefined, {
+        forward_origin: {
+          type: 'user',
+          sender_user: { id: Number(userId), first_name: '访客' },
+          date: 1,
+        },
+      }),
+    });
+    expect(calls).toHaveLength(0);
+    expect(await countLinks()).toEqual(linksBefore);
+    expect(await countEvents()).toEqual(eventsBefore);
+  });
+  it('only routes new owner replies quoting delivered visitor messages', async () => {
+    const link = await incoming();
+    await webhook({
+      message: msg(env.OWNER_ID, '已发送的回复', 777, {
+        reply_to_message: msg(env.OWNER_ID, '', link.target_message),
+      }),
+    });
+    const cookie = await login();
+    expect(
+      (await request(`/api/admin/users/${userId}/reply`, 'POST', { text: '后台回复' }, cookie))
+        .status,
+    ).toBe(200);
+    const mirror = calls.filter((c) => c.method === 'sendMessage').at(-1)!;
+    expect(mirror.body.chat_id).toBe(env.OWNER_ID);
+    const mirrorLink = (await env.DB.prepare(
+      'SELECT * FROM message_links WHERE source_chat=? AND source_message!=777',
+    )
+      .bind(env.OWNER_ID)
+      .first<Link>())!;
+    calls = [];
+    for (const messageId of [777, mirrorLink.source_message, 999999]) {
+      await webhook({
+        message: msg(env.OWNER_ID, '引用的不是访客来信', undefined, {
+          reply_to_message: msg(env.OWNER_ID, '', messageId),
+        }),
+      });
+    }
+    expect(calls).toHaveLength(0);
+    await webhook({
+      message: msg(env.OWNER_ID, '引用访客来信才发送', undefined, {
+        reply_to_message: msg(env.OWNER_ID, '', link.target_message),
+      }),
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ method: 'copyMessage', body: { chat_id: userId } });
+  });
+  it('still handles unquoted owner commands instead of treating them as messages to discard', async () => {
+    await incoming();
+    calls = [];
+    for (const command of ['/help', '/stats', `/ban ${userId}`, `/unban ${userId}`]) {
+      await webhook({ message: msg(env.OWNER_ID, command) });
+    }
+    expect(calls).toHaveLength(4);
+    expect(calls.every((c) => c.method === 'sendMessage' && c.body.chat_id === env.OWNER_ID)).toBe(
+      true,
+    );
+    expect((await getUser(env, userId))!.banned_until).toBe(0);
   });
   it('keeps identical message IDs in different visitor chats isolated', async () => {
     await verified('100001');
@@ -343,7 +458,7 @@ describe('webhook delivery and mapping', () => {
   });
   it('retries transient Telegram failures and preserves retry_after', async () => {
     await verified();
-    telegramFailure = { method: 'copyMessage', code: 429 };
+    telegramFailure = { method: 'forwardMessage', code: 429 };
     const message = msg(userId);
     const first = await webhook({ update_id: 77, message });
     expect(first.status).toBe(503);
@@ -357,7 +472,7 @@ describe('webhook delivery and mapping', () => {
   it('records permanent delivery failures without retrying forever', async () => {
     await verified();
     telegramFailure = {
-      method: 'copyMessage',
+      method: 'forwardMessage',
       code: 403,
       description: 'bot was blocked by the user',
     };
@@ -370,15 +485,15 @@ describe('webhook delivery and mapping', () => {
       )?.n,
     ).toBe(1);
   });
-  it('copies stickers and voice messages through the same reliable mapping', async () => {
+  it('forwards stickers and voice messages through the same reliable mapping', async () => {
     await verified();
     for (const kind of ['sticker', 'voice'])
       await webhook({
         message: msg(userId, '', undefined, { text: undefined, [kind]: { file_id: `${kind}-id` } }),
       });
-    expect(calls.filter((c) => c.method === 'copyMessage')).toHaveLength(2);
+    expect(calls.filter((c) => c.method === 'forwardMessage')).toHaveLength(2);
   });
-  it('syncs edits but applies link filters to edited text', async () => {
+  it('still syncs editable legacy copies but applies filters to edited text', async () => {
     const link = await incoming();
     await config({ blockLinks: true });
     calls = [];
@@ -391,6 +506,84 @@ describe('webhook delivery and mapping', () => {
     expect(calls.some((c) => c.method === 'editMessageText')).toBe(false);
     expect(await env.DB.prepare("SELECT id FROM events WHERE reason='links'").first()).toBeTruthy();
   });
+  it('reports an uneditable native forward without resending it or logging a successful edit', async () => {
+    const link = await incoming();
+    calls = [];
+    telegramFailure = {
+      method: 'editMessageText',
+      code: 400,
+      description: "Bad Request: message can't be edited",
+    };
+    expect(
+      (await webhook({ edited_message: msg(userId, '修改后的内容', link.source_message) })).status,
+    ).toBe(200);
+    expect(calls.find((c) => c.method === 'sendMessage')?.body).toMatchObject({
+      chat_id: userId,
+      text: expect.stringContaining('修改未能同步'),
+    });
+    expect(calls.some((c) => c.method === 'forwardMessage' || c.method === 'copyMessage')).toBe(
+      false,
+    );
+    expect(await env.DB.prepare("SELECT id FROM events WHERE reason='edited'").first()).toBeNull();
+    expect(
+      await env.DB.prepare("SELECT id FROM events WHERE reason='delivery_failed'").first(),
+    ).toBeTruthy();
+  });
+  it('preserves owner reply editing without adding menus or forwarding owner identity', async () => {
+    const link = await incoming();
+    await webhook({
+      message: msg(env.OWNER_ID, '原回复', 777, {
+        reply_to_message: msg(env.OWNER_ID, '', link.target_message),
+      }),
+    });
+    const out = (await env.DB.prepare(
+      'SELECT * FROM message_links WHERE source_chat=? AND source_message=777',
+    )
+      .bind(env.OWNER_ID)
+      .first<Link>())!;
+    calls = [];
+    await webhook({ edited_message: msg(env.OWNER_ID, '更新的回复', 777) });
+    expect(calls).toEqual([
+      {
+        method: 'editMessageText',
+        body: {
+          chat_id: userId,
+          message_id: out.target_message,
+          text: '更新的回复',
+          link_preview_options: { is_disabled: true },
+        },
+      },
+    ]);
+  });
+  it('uses the actual visitor identity for /who, replies and bans even with a different forward origin', async () => {
+    await verified();
+    await webhook({
+      message: msg(userId, '转发别人的内容', 50, {
+        forward_origin: {
+          type: 'user',
+          sender_user: { id: 999999, first_name: '原作者' },
+          date: 1,
+        },
+      }),
+    });
+    const link = (await env.DB.prepare('SELECT * FROM message_links').first<Link>())!;
+    const reference = msg(env.OWNER_ID, '', link.target_message);
+    await webhook({
+      message: msg(env.OWNER_ID, '/who', undefined, { reply_to_message: reference }),
+    });
+    expect(calls.filter((c) => c.method === 'sendMessage').at(-1)!.body.text).toContain(
+      `ID：${userId}`,
+    );
+    await webhook({
+      message: msg(env.OWNER_ID, '/ban', undefined, { reply_to_message: reference }),
+    });
+    expect((await getUser(env, userId))!.banned_until).toBe(-1);
+    expect(await getUser(env, '999999')).toBeNull();
+    await webhook({
+      message: msg(env.OWNER_ID, '/unban', undefined, { reply_to_message: reference }),
+    });
+    expect((await getUser(env, userId))!.banned_until).toBe(0);
+  });
   it('mirrors web replies and stores mappings so visitors can quote and react', async () => {
     await verified();
     const cookie = await login();
@@ -401,19 +594,45 @@ describe('webhook delivery and mapping', () => {
     const link = await env.DB.prepare('SELECT * FROM message_links').first<Link>();
     expect(link?.source_chat).toBe(env.OWNER_ID);
     expect(link?.target_chat).toBe(userId);
+    expect(calls.every((c) => c.body.reply_markup === undefined)).toBe(true);
+    expect(calls.some((c) => c.method === 'forwardMessage')).toBe(false);
+  });
+  it('anchors web replies to that visitor’s message without a user-info keyboard', async () => {
+    const link = await incoming();
+    await verified('100002');
+    await webhook({ message: msg('100002', '其他人的消息') });
+    calls = [];
+    const cookie = await login();
+    expect(
+      (await request(`/api/admin/users/${userId}/reply`, 'POST', { text: '后台回复' }, cookie))
+        .status,
+    ).toBe(200);
+    expect(calls.find((c) => c.method === 'sendMessage')!.body).toMatchObject({
+      chat_id: env.OWNER_ID,
+      reply_parameters: { message_id: link.target_message },
+    });
+    expect(calls.find((c) => c.method === 'copyMessage')!.body).toMatchObject({
+      chat_id: userId,
+      reply_parameters: { message_id: link.source_message },
+    });
+    expect(calls.every((c) => c.body.reply_markup === undefined)).toBe(true);
   });
 });
 
 describe('verification and anti-spam', () => {
   it('keeps unverified messages out of the owner inbox and requires resend after verification', async () => {
     await webhook({ message: msg(userId, '第一条留言') });
-    expect(calls.some((c) => c.method === 'copyMessage')).toBe(false);
+    expect(calls.some((c) => c.method === 'forwardMessage' || c.method === 'copyMessage')).toBe(
+      false,
+    );
     const challenge = (await env.DB.prepare('SELECT * FROM challenges').first<Challenge>())!;
     await callback(userId, `v:${challenge.id}:${challenge.answer}`, 9);
     expect((await getUser(env, userId))!.verified_until).toBeGreaterThan(now());
-    expect(calls.some((c) => c.method === 'copyMessage')).toBe(false);
+    expect(calls.some((c) => c.method === 'forwardMessage' || c.method === 'copyMessage')).toBe(
+      false,
+    );
     await webhook({ message: msg(userId, '重新发送') });
-    expect(calls.some((c) => c.method === 'copyMessage')).toBe(true);
+    expect(calls.some((c) => c.method === 'forwardMessage')).toBe(true);
   });
   it('binds challenges to a user and prevents replay', async () => {
     await webhook({ message: msg(userId, '/start') });
@@ -502,10 +721,12 @@ describe('verification and anti-spam', () => {
       }),
     });
     await webhook({ message: msg(userId, 'ＳＰＡＭ') });
-    expect(calls.some((c) => c.method === 'copyMessage')).toBe(false);
+    expect(calls.some((c) => c.method === 'forwardMessage' || c.method === 'copyMessage')).toBe(
+      false,
+    );
     await env.DB.prepare('UPDATE users SET trusted=1 WHERE id=?').bind(userId).run();
     await webhook({ message: msg(userId, 'SPAM https://example.com') });
-    expect(calls.some((c) => c.method === 'copyMessage')).toBe(true);
+    expect(calls.some((c) => c.method === 'forwardMessage')).toBe(true);
   });
   it('rate limits trusted users and pauses all incoming messages', async () => {
     await verified();
@@ -513,11 +734,13 @@ describe('verification and anti-spam', () => {
     await config({ messagesPerMinute: 1 });
     await webhook({ message: msg(userId) });
     await webhook({ message: msg(userId) });
-    expect(calls.filter((c) => c.method === 'copyMessage')).toHaveLength(1);
+    expect(calls.filter((c) => c.method === 'forwardMessage')).toHaveLength(1);
     await config({ paused: true });
     calls = [];
     await webhook({ message: msg(userId) });
-    expect(calls.some((c) => c.method === 'copyMessage')).toBe(false);
+    expect(calls.some((c) => c.method === 'forwardMessage' || c.method === 'copyMessage')).toBe(
+      false,
+    );
   });
   it('respects disabled content logging and keeps ban records through cleanup', async () => {
     await verified();
@@ -541,7 +764,7 @@ describe('verification and anti-spam', () => {
 });
 
 describe('reaction bridge', () => {
-  it('relays owner reaction buttons and clears reactions', async () => {
+  it('keeps old reaction buttons working for previously sent messages', async () => {
     const link = await incoming();
     await callback(env.OWNER_ID, `r:${link.id}:0`, link.target_message);
     const call = calls.find((c) => c.method === 'setMessageReaction')!.body;
@@ -579,12 +802,131 @@ describe('reaction bridge', () => {
     const out = (await env.DB.prepare(
       'SELECT * FROM message_links WHERE source_message=889',
     ).first<Link>())!;
-    await callback(userId, `r:${out.id}:2`, out.target_message);
+    await webhook({
+      message: msg(userId, '/react 🔥', undefined, {
+        reply_to_message: msg(userId, '', out.target_message),
+      }),
+    });
     expect(calls.filter((c) => c.method === 'setMessageReaction').at(-1)!.body).toMatchObject({
       chat_id: env.OWNER_ID,
       message_id: 889,
       reaction: [{ type: 'emoji', emoji: '🔥' }],
     });
+    calls = [];
+    await webhook({
+      message: msg(userId, '/react clear', undefined, {
+        reply_to_message: msg(userId, '', out.target_message),
+      }),
+    });
+    expect(calls.find((c) => c.method === 'setMessageReaction')!.body.reaction).toEqual([]);
+    expect(calls.some((c) => c.method === 'forwardMessage')).toBe(false);
+  });
+  it('lets Telegram accept additional ordinary emoji and explains unsupported ones only to the sender', async () => {
+    const link = await incoming();
+    calls = [];
+    await webhook({
+      message: msg(env.OWNER_ID, '/react 🥰', undefined, {
+        reply_to_message: msg(env.OWNER_ID, '', link.target_message),
+      }),
+    });
+    expect(calls.find((c) => c.method === 'setMessageReaction')!.body.reaction).toEqual([
+      { type: 'emoji', emoji: '🥰' },
+    ]);
+    calls = [];
+    telegramFailure = {
+      method: 'setMessageReaction',
+      code: 400,
+      description: 'Bad Request: REACTION_INVALID',
+    };
+    await webhook({
+      message: msg(userId, '/react 🦄', undefined, {
+        reply_to_message: msg(userId, '', link.source_message),
+      }),
+    });
+    const notices = calls.filter((c) => c.method === 'sendMessage');
+    expect(notices).toHaveLength(1);
+    expect(notices[0].body).toMatchObject({
+      chat_id: userId,
+      text: expect.stringContaining('不支持回应'),
+    });
+    expect(calls.some((c) => c.method === 'forwardMessage' || c.method === 'copyMessage')).toBe(
+      false,
+    );
+    expect(
+      (
+        await env.DB.prepare("SELECT COUNT(*) AS n FROM events WHERE reason='reaction'").first<{
+          n: number;
+        }>()
+      )?.n,
+    ).toBe(1);
+  });
+  it('rejects invalid targets, multiple emoji, custom emoji and banned visitor commands', async () => {
+    const link = await incoming();
+    calls = [];
+    await verified('100002');
+    await webhook({
+      message: msg('100002', '/react 👍', undefined, {
+        reply_to_message: msg('100002', '', link.source_message),
+      }),
+    });
+    for (const text of ['/react', '/react words', '/react 👍👍', '/react 👍 👏']) {
+      await webhook({
+        message: msg(env.OWNER_ID, text, undefined, {
+          reply_to_message: msg(env.OWNER_ID, '', link.target_message),
+        }),
+      });
+    }
+    await webhook({
+      message: msg(env.OWNER_ID, '/react 👍', undefined, {
+        reply_to_message: msg(env.OWNER_ID, '', link.target_message),
+        entities: [{ type: 'custom_emoji', offset: 7, length: 2, custom_emoji_id: '123' }],
+      }),
+    });
+    await env.DB.prepare('UPDATE users SET banned_until=-1 WHERE id=?').bind(userId).run();
+    await webhook({
+      message: msg(userId, '/react 👍', undefined, {
+        reply_to_message: msg(userId, '', link.source_message),
+      }),
+    });
+    expect(
+      calls.some((c) => c.method === 'setMessageReaction' || c.method === 'forwardMessage'),
+    ).toBe(false);
+  });
+  it('requires verification and honors pause and rate limits for visitor reaction commands', async () => {
+    const link = await incoming();
+    const command = () =>
+      msg(userId, '/react 👍', undefined, {
+        reply_to_message: msg(userId, '', link.source_message),
+      });
+    await env.DB.prepare('UPDATE users SET verified_until=0 WHERE id=?').bind(userId).run();
+    await webhook({ message: command() });
+    expect(calls.some((c) => c.method === 'setMessageReaction')).toBe(false);
+    await verified();
+    await config({ paused: true });
+    await webhook({ message: command() });
+    expect(calls.some((c) => c.method === 'setMessageReaction')).toBe(false);
+    await config({ messagesPerMinute: 1 });
+    await webhook({ message: command() });
+    expect(calls.some((c) => c.method === 'setMessageReaction')).toBe(false);
+  });
+  it('retries transient visitor reaction failures instead of pretending they are unsupported', async () => {
+    const link = await incoming();
+    telegramFailure = { method: 'setMessageReaction', code: 429 };
+    const message = msg(userId, '/react 👍', undefined, {
+      reply_to_message: msg(userId, '', link.source_message),
+    });
+    const response = await webhook({ update_id: 900, message });
+    expect(response.status).toBe(503);
+    expect(response.headers.get('retry-after')).toBe('3');
+    telegramFailure = null;
+    expect((await webhook({ update_id: 900, message })).status).toBe(200);
+    expect(
+      (
+        await env.DB.prepare("SELECT COUNT(*) AS n FROM events WHERE reason='reaction'").first<{
+          n: number;
+        }>()
+      )?.n,
+    ).toBe(1);
   });
 });
 

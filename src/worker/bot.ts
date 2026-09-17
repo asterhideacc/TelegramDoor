@@ -15,27 +15,12 @@ import {
 import { issueChallenge, nativeVerify } from './verification';
 import { sendText, telegram, TelegramError } from './telegram';
 
-const help = `TelegramDoor 使用说明\n\n直接回复一条收到的消息，即可回复对应用户。\n\n/ban [用户ID] [1h/1d/7d] [原因] — 封禁（可回复消息）\n/unban [用户ID] — 解封\n/trust [用户ID] — 加入白名单\n/untrust [用户ID] — 移出白名单\n/reset [用户ID] — 要求重新验证\n/who [用户ID] — 查看用户\n/react 👍 — 回复消息添加回应\n/react clear — 撤销回应\n/stats — 最近24小时统计\n/pause — 暂停接收\n/resume — 恢复接收\n\n也可以使用消息下方的表情和封禁按钮。私聊长按产生的原生表情事件不会推送给机器人，请使用按钮或 /react。`;
+const help = `TelegramDoor 使用说明\n\n引用机器人转发给你的访客消息，输入回复，即可发给对应访客。未引用访客消息的普通消息会被静默忽略；命令照常处理。\n\n/ban [用户ID] [1h/1d/7d] [原因] — 封禁（可回复消息）\n/unban [用户ID] — 解封\n/trust [用户ID] — 加入白名单\n/untrust [用户ID] — 移出白名单\n/reset [用户ID] — 要求重新验证\n/who [用户ID] — 查看用户\n/react 👍 — 回复消息添加回应\n/react clear — 撤销回应\n/stats — 最近24小时统计\n/pause — 暂停接收\n/resume — 恢复接收\n\n双方都可引用消息发送 /react 表情。私聊长按产生的原生表情事件不会推送给机器人，无法自动同步。`;
 
 function counterpart(link: Link, chat: string): { chat: string; message: number } {
   return link.source_chat === chat
     ? { chat: link.target_chat, message: link.target_message }
     : { chat: link.source_chat, message: link.source_message };
-}
-function controls(linkId: string, user: Person, toOwner: boolean) {
-  const rows: Record<string, string>[][] = [];
-  if (toOwner)
-    rows.push([
-      { text: `👤 ${user.name.slice(0, 25)} · ${user.id}`, callback_data: `who:${user.id}` },
-    ]);
-  rows.push([
-    ...reactionEmoji
-      .slice(0, 4)
-      .map((emoji, index) => ({ text: emoji, callback_data: `r:${linkId}:${index}` })),
-    { text: '撤销', callback_data: `r:${linkId}:clear` },
-  ]);
-  if (toOwner) rows.push([{ text: '🚫 封禁', callback_data: `ban:${user.id}` }]);
-  return { inline_keyboard: rows };
 }
 export function filterContent(ctx: BotContext, user: Person, message: Message): string | null {
   if (isBanned(user)) return 'banned';
@@ -111,6 +96,50 @@ async function react(ctx: BotContext, chat: string, link: Link, emoji: string): 
     direction: chat === ctx.env.OWNER_ID ? 'out' : 'in',
   });
 }
+async function reactionCommand(ctx: BotContext, message: Message, args: string[]): Promise<void> {
+  const chat = String(message.chat.id);
+  const link = message.reply_to_message
+    ? await findLink(ctx.env, chat, message.reply_to_message.message_id)
+    : null;
+  const value = args[0];
+  const emoji = value === 'clear' ? '' : value?.replace(/\uFE0F/g, '');
+  // Validate the shape, then let Telegram decide which emoji the target supports.
+  // Keep the old six-button list only for callbacks on messages sent before this version.
+  const singleEmoji =
+    value &&
+    value.length <= 64 &&
+    /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20e3/u.test(value) &&
+    [...new Intl.Segmenter().segment(value)].length === 1 &&
+    !message.entities?.some((entity) => entity.type === 'custom_emoji');
+  if (
+    !link ||
+    (chat !== ctx.env.OWNER_ID && link.user_id !== chat) ||
+    args.length !== 1 ||
+    (emoji !== '' && !singleEmoji)
+  ) {
+    await sendText(
+      ctx.env,
+      chat,
+      '请引用一条对话消息，发送 /react 👍（一个普通表情），或 /react clear。',
+    );
+    return;
+  }
+  try {
+    await react(ctx, chat, link, emoji!);
+    await sendText(ctx.env, chat, emoji ? `已回应 ${emoji}` : '已撤销回应');
+  } catch (error) {
+    if (!(error instanceof TelegramError) || error.code >= 500 || error.code === 429) throw error;
+    await sendText(
+      ctx.env,
+      chat,
+      /REACTION_INVALID|REACTIONS_TOO_MANY|reactions? (?:are |is )?not (?:allowed|available|supported)/i.test(
+        error.description,
+      )
+        ? '这个表情或这条消息不支持回应，未发送给对方。'
+        : `未能回应：${error.description}`,
+    );
+  }
+}
 async function describeUser(env: Env, id: string): Promise<string> {
   const user = await getUser(env, id);
   if (!user) return '没有找到这个用户。';
@@ -161,26 +190,13 @@ async function ownerCommand(ctx: BotContext, message: Message): Promise<boolean>
     );
     return true;
   }
+  if (command === '/react') {
+    await reactionCommand(ctx, message, args);
+    return true;
+  }
   const link = message.reply_to_message
     ? await findLink(env, env.OWNER_ID, message.reply_to_message.message_id)
     : null;
-  if (command === '/react') {
-    const emoji = args[0] === 'clear' ? '' : args[0]?.replace(/\uFE0F/g, '');
-    if (
-      !link ||
-      (emoji !== '' && !reactionEmoji.includes(emoji as (typeof reactionEmoji)[number]))
-    ) {
-      await sendText(
-        env,
-        env.OWNER_ID,
-        `请回复一条消息，发送 /react ${reactionEmoji.join(' / ')}，或 /react clear。`,
-      );
-      return true;
-    }
-    await react(ctx, env.OWNER_ID, link, emoji);
-    await sendText(env, env.OWNER_ID, emoji ? `已回应 ${emoji}` : '已撤销回应');
-    return true;
-  }
   const actions = ['/ban', '/unban', '/trust', '/untrust', '/reset', '/who'];
   if (!actions.includes(command)) {
     await sendText(
@@ -278,27 +294,34 @@ async function relay(
   const { env } = ctx,
     source = String(message.chat.id),
     target = toOwner ? env.OWNER_ID : user.id;
-  // If Telegram retries a completed copy, reuse the existing mapping.
+  // If Telegram retries a completed relay, reuse the existing mapping.
   const existing = await env.DB.prepare(
     'SELECT id FROM message_links WHERE source_chat=? AND source_message=?',
   )
     .bind(source, message.message_id)
     .first();
   if (existing) return;
-  const replyLink = message.reply_to_message
-    ? await findLink(env, source, message.reply_to_message.message_id)
-    : null;
+  const replyLink =
+    !toOwner && message.reply_to_message
+      ? await findLink(env, source, message.reply_to_message.message_id)
+      : null;
   const reply = replyLink?.user_id === user.id ? counterpart(replyLink, source) : null;
   const id = crypto.randomUUID();
-  const sent = await telegram<{ message_id: number }>(env, 'copyMessage', {
-    chat_id: target,
-    from_chat_id: source,
-    message_id: message.message_id,
-    reply_markup: controls(id, user, toOwner),
-    ...(reply && reply.chat === target
-      ? { reply_parameters: { message_id: reply.message, allow_sending_without_reply: true } }
-      : {}),
-  });
+  // Native forwards show the visitor's attribution without our own identity/menu rows.
+  // Copy owner replies to avoid exposing their personal Telegram account.
+  // forwardMessage does not accept reply_parameters or reply_markup.
+  const sent = await telegram<{ message_id: number }>(
+    env,
+    toOwner ? 'forwardMessage' : 'copyMessage',
+    {
+      chat_id: target,
+      from_chat_id: source,
+      message_id: message.message_id,
+      ...(reply && reply.chat === target
+        ? { reply_parameters: { message_id: reply.message, allow_sending_without_reply: true } }
+        : {}),
+    },
+  );
   await env.DB.prepare(
     'INSERT INTO message_links(id,user_id,source_chat,source_message,target_chat,target_message,created_at) VALUES(?,?,?,?,?,?,?)',
   )
@@ -379,17 +402,26 @@ export async function handleUpdate(env: Env, update: Update, origin: string): Pr
         return;
       }
     }
+    // New replies must quote a visitor message that we delivered into the owner's chat.
+    // Never infer a recipient from the latest conversation, an owner reply, or forward_origin.
     const ownerLink = edited
-      ? await findLink(env, env.OWNER_ID, message.message_id)
+      ? await env.DB.prepare('SELECT * FROM message_links WHERE source_chat=? AND source_message=?')
+          .bind(env.OWNER_ID, message.message_id)
+          .first<Link>()
       : message.reply_to_message
-        ? await findLink(env, env.OWNER_ID, message.reply_to_message.message_id)
+        ? await env.DB.prepare(
+            'SELECT * FROM message_links WHERE target_chat=? AND target_message=?',
+          )
+            .bind(env.OWNER_ID, message.reply_to_message.message_id)
+            .first<Link>()
         : null;
-    user = ownerLink ? await getUser(env, ownerLink.user_id) : null;
-    if (!user) {
-      if (!edited)
-        await sendText(env, env.OWNER_ID, '请回复一条用户消息。发送 /help 查看使用说明。');
+    if (
+      !ownerLink ||
+      (edited ? ownerLink.target_chat : ownerLink.source_chat) !== ownerLink.user_id
+    )
       return;
-    }
+    user = ownerLink ? await getUser(env, ownerLink.user_id) : null;
+    if (!user) return;
     if (isBanned(user)) {
       await sendText(env, env.OWNER_ID, '该用户已被封禁，请先 /unban 后再回复。');
       return;
@@ -415,7 +447,7 @@ export async function handleUpdate(env: Env, update: Update, origin: string): Pr
         await sendText(
           env,
           user.id,
-          '你已通过验证，可以直接发送留言。收到回复后，可使用消息下方按钮回应。',
+          '你已通过验证，可以直接发送留言。可引用消息发送 /react 👍 回应，/react clear 撤销。私聊长按点赞无法自动同步。',
         );
       else await issueChallenge(ctx, user);
       return;
@@ -423,6 +455,10 @@ export async function handleUpdate(env: Env, update: Update, origin: string): Pr
     const reason = filterContent(ctx, user, message);
     if (reason) {
       await blocked(ctx, user, message, reason, update.update_id);
+      return;
+    }
+    if (!edited && command.toLowerCase() === '/react') {
+      await reactionCommand(ctx, message, (message.text || '').trim().split(/\s+/).slice(1));
       return;
     }
   }
@@ -455,7 +491,11 @@ export async function handleUpdate(env: Env, update: Update, origin: string): Pr
       await sendText(
         env,
         String(message.chat.id),
-        owner ? `未能送达：${error.description}` : '这条消息未能送达，请稍后重试或改用普通文本。',
+        edited
+          ? '这次修改未能同步，对方看到的仍是之前的版本。原生转发或部分消息不能编辑，请重新发送修改后的内容。'
+          : owner
+            ? `未能送达：${error.description}`
+            : '这条消息未能送达，请稍后重试或改用普通文本。',
       ).catch(() => undefined);
     }
   }
@@ -466,17 +506,31 @@ export async function sendAdminReply(env: Env, userId: string, text: string): Pr
   if (!user || isBanned(user)) throw new TelegramError(400, '用户不存在或已封禁');
   const settings = await getSettings(env);
   // Mirror web replies into the owner's chat so later replies/reactions have two endpoints.
+  const latest = await env.DB.prepare(
+    'SELECT target_message FROM message_links WHERE user_id=? AND target_chat=? ORDER BY created_at DESC,target_message DESC LIMIT 1',
+  )
+    .bind(userId, env.OWNER_ID)
+    .first<{ target_message: number }>();
+  const replyTo = latest
+    ? {
+        message_id: latest.target_message,
+        chat: { id: Number(env.OWNER_ID), type: 'private' },
+      }
+    : undefined;
   const sent = await sendText(env, env.OWNER_ID, text, {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: `↗ 后台回复给 ${user.name.slice(0, 25)}`, callback_data: `who:${user.id}` }],
-      ],
-    },
+    ...(replyTo
+      ? { reply_parameters: { message_id: replyTo.message_id, allow_sending_without_reply: true } }
+      : {}),
   });
   try {
     await relay(
       { env, settings, origin: '' },
-      { message_id: sent.message_id, chat: { id: Number(env.OWNER_ID), type: 'private' }, text },
+      {
+        message_id: sent.message_id,
+        chat: { id: Number(env.OWNER_ID), type: 'private' },
+        text,
+        reply_to_message: replyTo,
+      },
       user,
       false,
     );

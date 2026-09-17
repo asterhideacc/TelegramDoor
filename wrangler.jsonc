@@ -14,9 +14,9 @@
   "d1_databases": [
     {
       "binding": "DB",
-      // Select a D1 database as DB in the dashboard before connecting Git.
-      // Omitting both name and ID lets Wrangler reuse that binding without D1 API access.
-      // CLI users can also let Wrangler provision a database on first deploy.
+      // Create this D1 database in the dashboard before importing your GitHub repo.
+      // Wrangler resolves the name, so deployers do not need to copy a database ID.
+      "database_name": "telegramdoor",
       "migrations_dir": "migrations",
     },
   ],

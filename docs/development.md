@@ -1,6 +1,8 @@
-# 本地开发与命令行部署
+# 本地开发
 
-只想使用机器人，按[网页部署教程](deployment-manual.md)即可；本文面向本地开发或使用 CLI 的用户。
+本文用于本地开发和测试；上线统一使用[连接 GitHub 部署教程](deployment-manual.md)。
+
+使用 Node.js 22.12+（推荐 Node.js 24 LTS）和 npm，在项目根目录运行以下命令。
 
 ## 本地开发
 
@@ -37,35 +39,3 @@ migrations/      D1 数据库迁移
 tests/           Workers/D1 集成测试
 docs/            上线验收与设计说明
 ```
-
-## 命令行部署
-
-要求 Node.js 22.12+（推荐 Node.js 24 LTS）和 npm。Cloudflare Builds 通过仓库的 `.node-version` 使用 Node.js 24。
-
-```sh
-git clone https://github.com/maodeyu180/TelegramDoor.git
-cd TelegramDoor
-npm ci
-npx wrangler login
-```
-
-先执行一次部署；Wrangler 可交互创建/选择 D1，并把资源 ID 写入本地配置。已有同名 Worker 时，请先确认目标是自己的机器人：
-
-```sh
-npm run deploy
-```
-
-推荐的网页流程通过控制台预先保存 `DB` 绑定；命令行也会沿用这个绑定。只有自动创建新资源时，登录凭据才需要相应的 D1 管理权限。不要把自己的资源 ID 提交回上游仓库。
-
-交互录入三个配置，避免把密钥留在 shell 历史中：
-
-```sh
-npx wrangler secret put ADMIN_PASSWORD
-npx wrangler secret put BOT_TOKEN
-npx wrangler secret put OWNER_ID
-npm run deploy
-```
-
-部署后打开 Worker 地址，检查 `/health` 并登录后台。管理员向机器人发送 `/start`，在后台连接 Telegram 并验收双向通信。Webhook 注册在登录后的管理后台触发，不提供公开的 `/setup` 后门。
-
-如果修改了机器人 Token 或域名，请重新连接 Telegram。**修改 Bot Token 后也需要在后台重新输入 Turnstile Secret**：它的加密密钥由 Bot Token 派生，旧密文不能用新 Token 解密。修改管理员密码会让现有登录会话失效。

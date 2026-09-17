@@ -54,7 +54,7 @@
         "description": "你的 Telegram 数字用户 ID，必须是个人账号的正整数 ID。"
       },
       "DB": {
-        "description": "用于消息映射、拦截记录和配置。请在 Worker 控制台选择专用 D1，绑定名为 DB，无需复制数据库 ID。"
+        "description": "用于消息映射、拦截记录和配置。先在同一账户创建名为 telegramdoor 的 D1，部署时按名称绑定，无需复制数据库 ID。"
       }
     }
   }

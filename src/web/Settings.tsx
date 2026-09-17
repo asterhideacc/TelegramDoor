@@ -467,16 +467,18 @@ export default function SettingsPage({
             </li>
           </ol>
           <p className="field-hint">
-            D1 在 Cloudflare 控制台绑定为 DB，无需填写数据库 ID。Turnstile 密钥在本页配置。
+            D1 默认按名称 telegramdoor 绑定，无需填写数据库 ID。Turnstile 密钥在本页配置。
           </p>
         </div>
         <div className="tip-card">
           <Heart size={21} className="purple-text" />
           <h3>别忘了给个回应</h3>
           <p>
-            使用消息下方的表情按钮，或回复消息发送 <code>/react 👍</code>，对方就能收到你的回应。
+            双方都可引用消息发送 <code>/react 👍</code>，或用 <code>/react clear</code> 撤销。
           </p>
-          <p>私聊原生点赞不会推送给机器人；付费回应和任意自定义表情不在支持范围内。</p>
+          <p>
+            支持的普通表情会显示在对方消息上；不支持时只提示操作者。私聊长按点赞无法自动同步，付费回应和自定义表情不受支持。
+          </p>
         </div>
         <div className="tip-card command-card">
           <h3>常用管理命令</h3>

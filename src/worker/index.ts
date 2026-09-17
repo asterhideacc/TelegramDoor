@@ -381,6 +381,7 @@ app.post('/api/admin/setup', async (c) => {
         { command: 'start', description: '开始留言' },
         { command: 'verify', description: '进行人机验证' },
         { command: 'help', description: '使用说明' },
+        { command: 'react', description: '引用消息发送 /react 👍 回应；/react clear 撤销' },
       ],
     });
     await telegram(c.env, 'setMyCommands', {
