@@ -45,7 +45,7 @@ Turnstile 服务端密钥配置错误和服务端故障不消耗用户验证次�
 
 三个用户提供的配置：`ADMIN_PASSWORD`、`BOT_TOKEN`、`OWNER_ID`。Webhook Secret 独立 HMAC 派生，无需第四个用户配置。Worker 同源托管 UI，前端不持有 Telegram 或 Cloudflare 凭据。
 
-一键部署向导复制源码、创建 D1 资源，并将模板里的全零 `database_id` 占位值替换成部署者账户的真实 ID；无需用户提前 Fork。分步备用方案则手工创建并填写绑定。部署脚本只构建与发布，不依赖构建令牌的 D1 迁移接口权限。第一次 API/健康检查请求或定时清理，通过 `DB` 绑定执行 `0001_initial.sql` 的建表语句；表结构和 Wrangler 兼容的 `d1_migrations` 标记在同一 D1 batch 事务中提交。重复和并发初始化不会清空数据，失败则回滚并允许下次请求重试。非法 Webhook 在访问数据库前就被拒绝。
+推荐在 GitHub Fork，再由 Cloudflare 导入已有仓库。部署者创建 D1 并将 Fork 配置的 `database_id` 占位值替换为真实 ID；后续 Sync fork 后触发 Git 构建，合并配置时保留自己的 Worker 名称和数据库绑定。可选模板按钮会自动复制源码并创建资源，但生成的独立副本没有 GitHub Fork 关系。部署脚本只构建与发布，不依赖构建令牌的 D1 迁移接口权限。第一次 API/健康检查请求或定时清理，通过 `DB` 绑定执行 `0001_initial.sql` 的建表语句；表结构和 Wrangler 兼容的 `d1_migrations` 标记在同一 D1 batch 事务中提交。重复和并发初始化不会清空数据，失败则回滚并允许下次请求重试。非法 Webhook 在访问数据库前就被拒绝。
 
 每个运行实例只缓存已完成的初始化，不跨请求共享正在执行的 D1 Promise。自动初始化只适用于已发布的、幂等的初始建表文件；未来 schema 变更需要新增迁移和升级方案，不会在请求中自动执行任意新增 SQL。已用 Wrangler 迁移的旧数据库可直接使用；运行时初始化的数据库也可继续使用 `npm run db:remote` 执行后续经审核的迁移。
 

@@ -4,9 +4,11 @@
 
 运行在 Cloudflare Workers 上的 Telegram 双向私信机器人，带人机验证、防骚扰规则和中文管理后台。一个机器人对应一位管理员，部署在你自己的 Cloudflare 账户里。
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fmaodeyu180%2FTelegramDoor)
+**[① Fork 项目](https://github.com/maodeyu180/TelegramDoor/fork) · [② 配置 D1](docs/deployment-manual.md#2-在-cloudflare-创建-d1-数据库) · [③ 在 Cloudflare 部署自己的 Fork](https://dash.cloudflare.com/)**
 
-想保留本文档对照部署？按住 **⌘（Mac）/ Ctrl（Windows、Linux）** 再点击部署按钮，或右键选择「在新标签页中打开链接」；手机可长按按钮选择新标签页。GitHub README 不支持通过 `target="_blank"` 强制链接在新标签页打开。
+推荐先 Fork，再在 Cloudflare 的 **Workers & Pages → Create application → Import a repository** 中选择自己的仓库。上面的部署入口打开 Cloudflare 控制台，不会再次复制模板。完整点击步骤见[部署教程](docs/deployment-manual.md)。
+
+想保留本文档对照部署？按住 **⌘（Mac）/ Ctrl（Windows、Linux）** 再点击部署链接，或右键选择「在新标签页中打开链接」；手机可长按链接选择新标签页。GitHub README 不支持通过 `target="_blank"` 强制链接在新标签页打开。
 
 > 本项目仍处于首个版本。自动化测试使用本地 Workers/D1 和模拟 Telegram API；正式使用前，请完成下面的真实账号验收。不要把聊天内算术题视为强人机验证，持续收到广告时建议启用 Turnstile。
 
@@ -18,7 +20,7 @@
 - **人机验证**：默认聊天内算术题，开箱即用；可在后台切换到免费的 Cloudflare Turnstile。
 - **防骚扰**：用户限频、验证失败冷却、永久/临时封禁、白名单、关键词过滤、链接拦截、暂停接收。
 - **中文后台**：统计概览、拦截记录、消息记录、访客管理、防护设置；今天、近 7 天、近 30 天、全部历史；搜索、分页、详情和后台回复。
-- **部署简化**：三个必填配置，D1 自动绑定、首次访问自动建表，Webhook 密钥自动派生。
+- **部署与更新**：Fork 后关联 Cloudflare，三个必填环境变量；D1 按教程绑定、首次访问自动建表，后续可通过 Sync fork 更新代码。
 - **隐私**：可关闭文本记录；媒体不下载；定期清理记录；Turnstile Secret 加密保存，Bot Token 和管理员密码不返回前端。
 
 ## 三个必填配置
@@ -29,39 +31,33 @@
 | `BOT_TOKEN`      | 通过 Telegram 官方 `@BotFather` 的 `/newbot` 创建机器人后获得。                     |
 | `OWNER_ID`       | 管理员自己的 **数字用户 ID**，不是 `@username`、群 ID 或机器人的 ID。必须是正整数。 |
 
-D1 的 `DB` 是资源绑定，不是第四个需要手工提供的密钥。启用 Turnstile 还需要 Site key 与 Secret key，在后台填写；默认聊天内验证无需额外配置。
+Fork 部署还需创建 D1 数据库并在 `wrangler.jsonc` 填写数据库 ID。`DB` 是资源绑定，不是第四个环境变量或密钥。启用 Turnstile 还需要 Site key 与 Secret key，在后台填写；默认聊天内验证无需额外配置。
 
 请不要将实际密码或 Bot Token 提交到仓库、Issue、截图和日志里。
 
 ## 部署到 Cloudflare
 
-### 一键部署（推荐）
+### Fork 后部署（推荐）
 
-**不需要提前 Fork。** 直接点击本仓库的部署按钮，登录并授权自己的 GitHub 与 Cloudflare 账号；Cloudflare 会创建你自己的源码副本、Worker 和 D1。副本不会自动同步本仓库后续更新。
+这条流程保留 GitHub Fork 关系，方便以后获取上游更新，并避开 Cloudflare 模板按钮创建 Git 仓库的环节。全程可在浏览器完成，首次需要创建并绑定 D1，以及填写三个运行时密钥。
 
 已有机器人曾接入其他双向服务？请先阅读[从其他双向机器人迁移](#从其他双向机器人迁移)，撤销旧 Token 后使用新 Token 部署。
 
-1. 注册/登录 Cloudflare 和 GitHub，准备三个必填配置。
-2. 点击上方 **Deploy to Cloudflare**，按向导创建自己的仓库与 Worker，填写三个配置。D1 选择 **Create new**，为这个机器人使用新的专用数据库；无需提前去 D1 页面创建。
-3. 保留模板的 `npm run deploy` 部署命令，它会构建后台并部署 Worker。D1 由向导创建并绑定，表结构在首次访问时自动初始化，无需额外的 D1 管理令牌。
-4. 打开部署得到的 HTTPS 地址，例如 `https://telegramdoor.<你的子域>.workers.dev`，输入管理密码。
-5. 用 `OWNER_ID` 对应的 Telegram 账号打开自己的机器人，发送 `/start`。
-6. 在后台「防护设置」点击 **连接 Telegram**，然后「检查连接」。这会设置 Webhook 和命令菜单，不丢弃未处理消息。
-7. 换另一个 Telegram 账号完成验证、发送留言，管理员引用回复进行验收。
+1. 点击上方 **Fork 项目 → Create fork**，在自己的 GitHub 账号创建 Fork。仓库名下应显示 `forked from maodeyu180/TelegramDoor`。
+2. 在 Cloudflare 创建一个机器人专用的 D1 数据库，复制 Database ID。
+3. 在自己的 Fork 修改 `wrangler.jsonc`：填写 Worker 名称、数据库名称和真实 `database_id`，保留绑定名 `DB`，提交到 `main`。
+4. 从自己的 Fork README 点击 **在 Cloudflare 部署自己的 Fork**，进入 **Workers & Pages → Create application → Import a repository**，授权并选择自己的 Fork 和 `main`。根目录 `/`，构建命令 `npm run build`，部署命令 `npm run deploy`；Worker 名称与配置一致。
+5. 发布后，在 Worker 的 **Settings → Variables and Secrets** 中保存 `ADMIN_PASSWORD`、`BOT_TOKEN`、`OWNER_ID`，保存并部署使其生效。仅填构建变量无效。
+6. 打开 Worker 的 `/health` 确认正常，再登录后台。管理员向机器人发送 `/start`，在后台点击「连接 Telegram」和「检查连接」，用另一个账号测试双向通信。
+7. 后续更新：自己的 Fork → **Sync fork → Update branch**，同步成功后 Cloudflare 自动构建部署。遇到冲突时先按[更新说明](docs/updating.md)处理，保留自己的数据库 ID。
 
-Cloudflare 的部署按钮支持 D1 自动创建和密钥提示，配置来源分别是 `wrangler.jsonc` 和 `.dev.vars.example`。模板中的全零 `database_id` 是占位值，向导应在你的副本中替换为真实 ID。首次云端部署仍需登录、授权和填写自己的密钥；本仓库不提供共享机器人服务。
+每一步点哪里、怎样修改配置、如何确认成功，见[完整部署教程](docs/deployment-manual.md)。这条流程能绕过模板复制环节，但仍需核对账户权限、数据库绑定和构建结果，不能保证消除所有平台故障。
 
-详细步骤与检查点见[一键部署与排错](docs/deployment.md)。按钮持续失败时，可使用[浏览器分步备用教程](docs/deployment-manual.md)；提前 Fork 只用于这条备用路径，不能保证解决 D1 自动创建失败。当前尚未完成本项目真实账户的一键部署验收，本地检查不能替代云端验证。
+**已经用旧按钮部署过？** 自动复制的独立仓库没有 `Sync fork`。可以按[迁移到 Fork](docs/updating.md#已用旧按钮部署如何迁到-fork)切换代码来源，继续使用已有 Worker、数据库和密钥。
 
-**Project name 可以保留 `telegramdoor` 吗？** 可以。其他人的 GitHub、Cloudflare 账号可以使用同名仓库和 Worker，名称不需要全网唯一；自己的账号内已有同名资源时，请换一个未使用的名字，例如 `telegramdoor-inbox`。建议只用小写字母、数字和短横线，不以短横线开头或结尾，最长 63 个字符，以兼容 `workers.dev` 域名。
+**还能用原来的一键按钮吗？** 可以，作为[可选模板部署](docs/deployment.md#模板部署可选)保留。它会创建独立副本；把按钮里的源地址换成自己的 Fork，也仍会复制一份仓库，不能代替“导入已有仓库”。
 
-**仓库创建失败，或只出现两个文件？** 完整副本应有 `package.json`、`package-lock.json`、`src/`、`migrations/` 等文件。如果只有 `README.md` 和 Wrangler 配置，源码导入没有完成，不能算部署成功。Cloudflare 有一条仍未关闭的[相同现象报告](https://github.com/cloudflare/developer-platform/issues/31)，其中官方模板也受影响。换名字只能排除重名，不能保证修复导入服务的问题。详细定位方法和浏览器恢复步骤见[部署排错](docs/deployment.md)。
-
-模板已移出默认 GitHub Actions 工作流，以排除复制工作流的额外权限风险；这只是兼容性预防措施，不代表已经确认它就是仓库创建失败的原因。
-
-**只填三个配置就能用吗？** 按钮正常完成资源创建与发布后，默认聊天内算术验证只需要这三个配置。部署完成后还需给机器人发送 `/start`，并登录后台点击「连接 Telegram」。不需要准备 Turnstile 密钥，也不需要手动创建数据库。
-
-**Turnstile 也会自动创建吗？** 当前不会。部署按钮目前支持的自动创建资源不包含 Turnstile；启用它需要按[使用 Turnstile](#使用-turnstile)创建组件并填写两个密钥。Cloudflare 提供创建组件的 API，但需要额外的账户 ID 和具备 Turnstile 编辑权限的 API Token，无法只凭上面的三个配置完成。这个版本采用手动配置，不要求将 Cloudflare 账户管理凭据交给机器人。参见 [部署按钮支持的资源](https://developers.cloudflare.com/workers/platform/deploy-buttons/#automatic-resource-provisioning) 和 [Turnstile 自动化接口](https://developers.cloudflare.com/turnstile/get-started/widget-management/api/)。
+**Turnstile 必须配置吗？** 不需要。默认使用聊天内算术题；启用 Turnstile 时再按[使用 Turnstile](#使用-turnstile)创建组件并在后台填写两个 key。
 
 ### 命令行部署
 
@@ -91,7 +87,7 @@ npx wrangler secret put OWNER_ID
 npm run deploy
 ```
 
-之后完成上面第 4～7 步。Webhook 注册在登录后的管理后台触发，不提供公开的 `/setup` 后门。
+部署后打开 Worker 地址，检查 `/health` 并登录后台。管理员向机器人发送 `/start`，在后台连接 Telegram 并验收双向通信。Webhook 注册在登录后的管理后台触发，不提供公开的 `/setup` 后门。
 
 如果修改了机器人 Token 或域名，请重新连接 Telegram。**修改 Bot Token 后也需要在后台重新输入 Turnstile Secret**：它的加密密钥由 Bot Token 派生，旧密文不能用新 Token 解密。修改管理员密码会让现有登录会话失效。
 
@@ -208,8 +204,9 @@ docs/            上线验收与设计说明
 ## 文档与贡献
 
 - [架构与数据处理](docs/architecture.md)
-- [一键部署与排错](docs/deployment.md)
-- [浏览器分步部署（备用方案）](docs/deployment-manual.md)
+- [Fork 部署教程（推荐）](docs/deployment-manual.md)
+- [同步更新与已有部署迁移](docs/updating.md)
+- [部署方式选择、可选模板按钮与排错](docs/deployment.md)
 - [真实账号验收清单](docs/acceptance.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全问题报告](SECURITY.md)

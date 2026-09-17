@@ -4,10 +4,11 @@
 
 ## 部署
 
-- [ ] 从源仓库直接使用[一键部署](deployment.md)，无需提前 Fork；向导提示三个必填密钥，D1 选择 Create new。
-- [ ] 向导在部署者自己的 GitHub 账号创建完整副本，绑定中的全零 `database_id` 已替换为真实 ID。
+- [ ] 按[Fork 部署教程](deployment-manual.md)创建真正的 Fork，仓库显示 `forked from maodeyu180/TelegramDoor`。
+- [ ] README 的 Cloudflare 入口打开控制台，可以选择自己的 Fork 导入，不会再次复制模板。
+- [ ] 创建专用 D1，Fork 配置中的全零 `database_id` 已替换为真实 ID。
 - [ ] 仓库包含 `src/`、`package.json`、`package-lock.json` 和 `migrations/`；只有 README 和 Wrangler 配置时按教程处理。
-- [ ] 向导自动创建的 D1 数据库实际存在于 Worker 所在账户，配置中的 `database_id` 与详情页一致；只有生成 ID 不算创建成功。
+- [ ] D1 数据库实际存在于 Worker 所在账户，配置中的 `database_id` 与详情页一致；只有生成 ID 不算创建成功。
 - [ ] Worker 名称与 `wrangler.jsonc` 的 `name` 一致，部署命令为 `npm run deploy`。
 - [ ] 三个密钥保存到 Worker 运行时「变量和机密」，名称无多余空格，生产部署已生效。
 - [ ] 确认 D1 已创建、绑定名是 `DB`；无需额外 D1 API Token 或手工运行 SQL，首次访问 `/health` 返回 `ok: true`。
@@ -16,7 +17,13 @@
 - [ ] 所有管理页面和手机布局正常；HTTPS 静态资源与 API 不报 CSP 错误。
 - [ ] 管理员向机器人 `/start` 后，在后台连接并检查 Webhook，URL 指向自己的域名。
 
-按钮持续失败时另行验收[浏览器分步备用方案](deployment-manual.md)，不要将手工补建数据库的成功记录算作一键部署成功。
+- [ ] Sync fork 后触发最新提交的构建，原 Worker 名称、数据库 ID、设置和数据保持正确；按[更新说明](updating.md)处理配置冲突。
+- [ ] 从独立副本迁到 Fork 时复用原 Worker 和 D1，运行时密钥仍生效。
+
+## 可选模板部署
+
+- [ ] [模板按钮](deployment.md#模板部署可选)询问三个密钥，创建完整独立副本并自动创建、绑定 D1。
+- [ ] 首次 `/health` 正常；手工补建数据库的成功记录不能算作模板自动创建成功。
 
 ## 双向私信
 

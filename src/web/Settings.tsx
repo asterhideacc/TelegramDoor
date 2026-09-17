@@ -467,7 +467,7 @@ export default function SettingsPage({
             </li>
           </ol>
           <p className="field-hint">
-            D1 由部署模板绑定。Turnstile 密钥在本页配置，无需再增加环境变量。
+            D1 按部署教程创建并绑定。Turnstile 密钥在本页配置，无需再增加环境变量。
           </p>
         </div>
         <div className="tip-card">

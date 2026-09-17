@@ -1,10 +1,25 @@
-# 一键部署与排错
+# 部署方式与排错
 
-默认使用 [Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fmaodeyu180%2FTelegramDoor)。**不需要先 Fork，也不需要在自己的电脑 clone。** 需要登录自己的 Cloudflare 和 GitHub 账号并授权；向导会把本项目复制到你的 GitHub 账号，再创建资源、构建并发布。
+**推荐：[先 Fork，再到 Cloudflare 选择自己的仓库部署](deployment-manual.md)。** 首次配置 D1 和三个运行时密钥，之后通过 GitHub 的 `Sync fork` 获取更新，由 Cloudflare 自动构建发布。
 
-如果按钮持续失败，使用[浏览器分步备用教程](deployment-manual.md)。分步方案里的 Fork、手工建 D1、填写 ID 不是正常一键部署的前置步骤。
+首页的“在 Cloudflare 部署自己的 Fork”只打开 Cloudflare 控制台。进入 **Workers & Pages → Create application → Import a repository**，选自己的 Fork；它不再使用自动复制模板的服务。
 
-## 正常流程
+| 方式                        | 仓库来源                                  | D1 和密钥                               | 后续更新                                     |
+| --------------------------- | ----------------------------------------- | --------------------------------------- | -------------------------------------------- |
+| Fork 后导入已有仓库（推荐） | GitHub 创建真正的 Fork，Cloudflare 关联它 | 首次按教程创建并绑定 D1，填写运行时密钥 | Sync fork → Update branch；冲突需先处理      |
+| 模板按钮（可选）            | Cloudflare 自动创建独立源码副本           | 模板向导创建并绑定 D1，询问密钥         | 没有 GitHub Sync fork，需手工合并或迁到 Fork |
+
+Fork 方案减少了对模板复制服务的依赖，更新路径也更直接；这是选择它的原因，不代表有数据证明总体部署失败率降低。D1 绑定、账号授权及构建仍需按[教程检查点](deployment-manual.md)确认。
+
+已有独立副本可以按[迁移说明](updating.md#已用旧按钮部署如何迁到-fork)保留现有 Worker 和数据库，只切换代码来源。
+
+## 模板部署（可选）
+
+仅希望快速试用、不要求保留 Fork 关系时，可以使用原来的模板按钮：
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fmaodeyu180%2FTelegramDoor)
+
+这个按钮会复制源码到新的独立仓库。即使先 Fork，或把 URL 改成自己的 Fork 地址，模板按钮仍然会再次复制源码；它不是“选择已有仓库部署”的入口。[官方按钮流程](https://developers.cloudflare.com/workers/platform/deploy-buttons/)
 
 1. 准备 `ADMIN_PASSWORD`、`BOT_TOKEN`、`OWNER_ID` 三个值，格式见 [README](../README.md#三个必填配置)。曾使用旧双向服务的机器人先按[迁移说明](../README.md#从其他双向机器人迁移)撤销旧 Token。
 2. 点击源仓库的部署按钮，选择自己的 Cloudflare 账户，连接自己的 GitHub 账号。公开源仓库可以属于别人。
@@ -19,22 +34,13 @@
 
 当前本项目的一键部署仍待真实账户验收。本地构建、测试和 dry-run 不能验证 Cloudflare 控制台的仓库导入、账户授权及资源创建服务。
 
-## 需要先 Fork 吗
+## Fork 与自动复制的区别
 
-不需要。Cloudflare 的部署按钮直接接收本仓库的公开 URL，由向导创建部署者自己的 Git 副本。这不是将维护者的仓库绑定到所有用户的 Worker，也不会自动同步上游更新。[官方流程](https://developers.cloudflare.com/workers/platform/deploy-buttons/)
-
-两条入口有不同的配置步骤：
-
-| 入口                                | 仓库                          | D1 与密钥                               |
-| ----------------------------------- | ----------------------------- | --------------------------------------- |
-| README 的 Deploy to Cloudflare 按钮 | 向导自动复制，无需提前 Fork   | 向导创建并绑定 D1，询问三个密钥         |
-| Cloudflare 导入已有 Git 仓库        | 先有自己的完整副本，例如 Fork | 按备用教程创建并绑定 D1，设置运行时密钥 |
-
-只 Fork 不会修复 D1 自动创建的问题。Fork 后 README 的按钮仍指向原项目，继续点它仍会进入复制模板的流程；要使用自己已有的 Fork，请按[备用教程](deployment-manual.md)从 Cloudflare 导入已有仓库。
+推荐流程里的 Fork 是 GitHub 原生 Fork，仓库显示 `forked from maodeyu180/TelegramDoor`，后续可用 `Sync fork`。模板按钮创建的是独立副本，不会自动同步上游更新。点击 Fork 也不会把已有的独立副本变成关联源仓库的 Fork。[GitHub 同步说明](https://docs.github.com/en/pull-requests/how-tos/work-with-forks/syncing-a-fork)
 
 ## 与公开模板的配置对照
 
-2026-09-17 对照了公开源代码和部署文档。这是配置比较，不代表在同一账户完成了这些项目的部署实测，也不能推算按钮的整体成功率。
+以下对照的是各项目的**模板按钮路径**，TelegramDoor 的默认推荐入口已经改为 Fork 后导入已有仓库。2026-09-17 对照了公开源代码和部署文档。这是配置比较，不代表在同一账户完成了这些项目的部署实测，也不能推算按钮的整体成功率。
 
 | 项目                                                                                            | 是否要求提前 Fork      | D1 模板配置                                        | 建表与后续步骤                                            |
 | ----------------------------------------------------------------------------------------------- | ---------------------- | -------------------------------------------------- | --------------------------------------------------------- |
@@ -75,7 +81,7 @@ Cloudflare 上游有[源码导入不完整的报告 #31](https://github.com/clou
 2. 对照部署者副本 `wrangler.jsonc` 的 `database_id` 和数据库详情页的 Database ID；不要拿源模板的占位值、账户 ID 或其他账户的数据库 ID 代替。
 3. 如果列表为空，自动资源创建没有完成；不应把配置里生成了 ID 当成创建成功。先检查日志中是否有更早的资源创建/权限错误。错误码本身不能确认失败的具体原因。
 4. 测试修正后的源模板时，需要让按钮重新复制最新源码。源仓库的更新不会自动进入已有副本，重跑旧提交也不会获得新配置；可换未使用的名称测试，不必删除已有资源。
-5. 持续失败时，按[备用教程](deployment-manual.md#从失败的按钮部署继续)复用完整副本和 Worker，手工补建并绑定 D1。如果资源实际存在且账户、ID 均一致仍报错，保留日志联系 Cloudflare 支持，不要反复删除数据库。
+5. 持续失败时，按[分步教程](deployment-manual.md#从失败的按钮部署继续)复用完整副本和 Worker，手工补建并绑定 D1。如果资源实际存在且账户、ID 均一致仍报错，保留日志联系 Cloudflare 支持，不要反复删除数据库。
 
 这些步骤用于定位或恢复，手工补建成功不能算作一键部署成功。D1 不要求先购买付费套餐；没有证据表明升级套餐能修复这次故障。
 

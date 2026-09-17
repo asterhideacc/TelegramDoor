@@ -1,10 +1,10 @@
-# 浏览器分步部署（备用方案）
+# Fork 后部署到 Cloudflare（推荐）
 
-正常安装优先使用[一键部署](deployment.md)，不需要提前 Fork 或手动创建 D1。按钮导入或资源创建持续失败时，再按下面的步骤部署 TelegramDoor。全程使用 GitHub 和 Cloudflare 网页，不需要安装 Node.js、运行命令行或手工执行 SQL。机器人仍只有三个必填环境变量；另外需要明确创建 D1 数据库并填写资源绑定。
+推荐先在 GitHub Fork 本项目，再让 Cloudflare 直接构建这个 Fork。这样既避开模板按钮创建 Git 仓库的环节，也保留 `Sync fork` 更新入口。全程使用网页，不需要安装 Node.js、运行命令行或手工执行 SQL。
 
-流程：**准备自己的仓库 → 创建 D1 → 修改绑定 → 部署 Worker → 保存三个密钥 → 连接 Telegram**。每步都有检查点，确认完成后再继续。
+流程：**Fork → 创建 D1 → 填写绑定 → 在 Cloudflare 选择自己的 Fork → 保存三个密钥 → 连接 Telegram**。机器人仍只有三个必填环境变量，但首次还需创建 D1 并填写数据库 ID。
 
-已有按钮部署留下的仓库或 Worker？先看[从失败的按钮部署继续](#从失败的按钮部署继续)，可以保留完整源码和已有资源。
+已有可用 Worker、想从旧模板副本换成 Fork？请按[迁移步骤](updating.md#已用旧按钮部署如何迁到-fork)继续使用原来的数据库和 Worker。尚未部署成功则可看[从失败的按钮部署继续](#从失败的按钮部署继续)。
 
 ## 1. 准备账号、配置和仓库
 
@@ -18,9 +18,9 @@
 
 如果机器人以前接入过其他双向服务，先按[迁移说明](../README.md#从其他双向机器人迁移)撤销旧 Token，再使用新 Token。
 
-打开 [TelegramDoor 源仓库](https://github.com/maodeyu180/TelegramDoor)，点击右上角 **Fork → Create fork**，复制到自己的 GitHub 账号。仓库名可以保留 `TelegramDoor`。如果已经有完整副本，直接使用那个副本即可。
+打开 [TelegramDoor 源仓库](https://github.com/maodeyu180/TelegramDoor)，点击右上角 **Fork → Create fork**，复制到自己的 GitHub 账号。仓库名可以保留 `TelegramDoor`。如果已有这个项目的 Fork，直接使用；独立复制的仓库虽然也可部署，但没有 `Sync fork`，需要按迁移说明建立真正的 Fork。
 
-**检查点：** 自己的仓库里能看到 `src/`、`migrations/`、`package.json`、`package-lock.json` 和 `wrangler.jsonc`。只有 README 和 Wrangler 配置的仓库不完整，请另建完整 Fork。无需删除旧仓库。
+**检查点：** 仓库名下显示 `forked from maodeyu180/TelegramDoor`；自己的仓库里能看到 `src/`、`migrations/`、`package.json`、`package-lock.json` 和 `wrangler.jsonc`。只有 README 和 Wrangler 配置的仓库不完整，请另建完整 Fork。无需删除旧仓库。
 
 ## 2. 在 Cloudflare 创建 D1 数据库
 
@@ -61,7 +61,9 @@
 
 ## 4. 关联 GitHub 并部署 Worker
 
-在 Cloudflare 的同一账户打开 **Workers & Pages → Create application / 创建应用**，选择导入已有 Git 仓库的 Worker 入口（界面可能显示 **Import a repository / Connect GitHub**）。本项目部署目标是 **Worker**。
+回到自己 Fork 的 README，点击 **在 Cloudflare 部署自己的 Fork**，会打开 Cloudflare 控制台。选择创建 D1 的同一账户，进入 **Workers & Pages → Create application / 创建应用 → Import a repository / 导入仓库**（界面也可能显示 **Connect GitHub**）。本项目部署目标是 **Worker**。
+
+这个入口不会复制仓库。在仓库列表中选中 **自己的 GitHub 用户名 / 自己的 Fork 仓库名**；不要选择维护者的源仓库。若看不到自己的 Fork，检查 GitHub App 是否已获准访问该仓库。
 
 授权 Cloudflare 访问自己上一步的 GitHub 仓库，选中仓库和 `main` 分支，核对构建设置：
 
@@ -113,20 +115,24 @@
 
 默认算术验证无需额外密钥。需要 Turnstile 时，再按[Turnstile 教程](../README.md#使用-turnstile)创建组件并在后台保存 Site key 和 Secret key。
 
+## 8. 后续更新
+
+在自己的 Fork 首页点击 **Sync fork → Update branch**。同步到 `main` 后，Cloudflare 会按已保存的 Git 构建设置自动部署。先检查上游版本说明；如有配置合并冲突，保留自己的 Worker 名称和真实数据库 ID，不要用模板占位值覆盖。详见[更新与迁移说明](updating.md)。
+
 ## 从失败的按钮部署继续
 
 已成功导入完整源码时，可以保留当前仓库和 Worker。按第 2～3 步创建数据库并修正绑定；第 3 步的 Worker 名称填写现有 Worker 名称，不必重新创建。
 
-随后到现有 Worker 的 **Settings → Build** 检查是否已关联该仓库的 `main` 分支，以及部署命令是否为 `npm run deploy`。源码新提交应触发构建；如果没有关联，先连接已有仓库，再构建最新提交。不要只重跑仍使用旧配置的旧提交。
+随后到现有 Worker 的 **Settings → Builds** 检查是否已关联该仓库的 `main` 分支，以及部署命令是否为 `npm run deploy`。源码新提交应触发构建；如果没有关联，先连接已有仓库，再构建最新提交。不要只重跑仍使用旧配置的旧提交。
 
-如果上次向导已保存三个运行时密钥，第 5 步只需要检查是否齐全、生效，不必重新录入。只留下两个文件的仓库则从第 1 步新建完整 Fork。
+如果上次向导已保存三个运行时密钥，第 5 步只需要检查是否齐全、生效，不必重新录入。只留下两个文件的仓库则从第 1 步新建完整 Fork。已有完整独立副本也可先恢复运行；要获得后续 `Sync fork` 更新能力，再按[迁移步骤](updating.md#已用旧按钮部署如何迁到-fork)切换。
 
 ## 常见错误
 
 | 现象                                                | 处理                                                                                                        |
 | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `D1 binding 'DB' ... was not found`，错误码 `10181` | 对照第 2～3 步，确认数据库实际存在、账户相同、`database_id` 一致。没有数据库时先创建，换仓库名无法补建 D1。 |
-| D1 页面没有任何数据库                               | 自动创建未完成；按第 2 步创建，不要使用失败向导遗留的数据库 ID。                                            |
+| D1 页面没有任何数据库                               | 尚未创建，或旧模板自动创建失败；按第 2 步创建并使用真实 ID。                                                |
 | 找不到 `package.json` 或 Worker 入口                | 检查源码完整性和构建根目录。                                                                                |
 | Node/Vite 报版本不支持                              | 保留 `.node-version`，去掉构建设置中冲突的旧 `NODE_VERSION`。                                               |
 | 找不到 `dist`                                       | 部署命令使用 `npm run deploy`。                                                                             |
