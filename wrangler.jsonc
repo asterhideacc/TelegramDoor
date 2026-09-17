@@ -11,7 +11,14 @@
     "run_worker_first": ["/api/*", "/webhook", "/health"],
   },
   "d1_databases": [
-    { "binding": "DB", "database_name": "telegramdoor", "migrations_dir": "migrations" },
+    {
+      "binding": "DB",
+      "database_name": "telegramdoor",
+      // Deploy to Cloudflare replaces this placeholder with a new database ID.
+      // For manual/CLI deployment, create D1 first and replace it with the real ID.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
   ],
   "triggers": { "crons": ["17 19 * * *"] },
   "observability": { "enabled": false },

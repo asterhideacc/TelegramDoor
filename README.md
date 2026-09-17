@@ -35,19 +35,23 @@ D1 的 `DB` 是资源绑定，不是第四个需要手工提供的密钥。启�
 
 ## 部署到 Cloudflare
 
-### 浏览器部署
+### 一键部署（推荐）
+
+**不需要提前 Fork。** 直接点击本仓库的部署按钮，登录并授权自己的 GitHub 与 Cloudflare 账号；Cloudflare 会创建你自己的源码副本、Worker 和 D1。副本不会自动同步本仓库后续更新。
 
 已有机器人曾接入其他双向服务？请先阅读[从其他双向机器人迁移](#从其他双向机器人迁移)，撤销旧 Token 后使用新 Token 部署。
 
 1. 注册/登录 Cloudflare 和 GitHub，准备三个必填配置。
-2. 点击上方 **Deploy to Cloudflare**，按向导创建自己的仓库与 Worker，填写三个配置。
+2. 点击上方 **Deploy to Cloudflare**，按向导创建自己的仓库与 Worker，填写三个配置。D1 选择 **Create new**，为这个机器人使用新的专用数据库；无需提前去 D1 页面创建。
 3. 保留模板的 `npm run deploy` 部署命令，它会构建后台并部署 Worker。D1 由向导创建并绑定，表结构在首次访问时自动初始化，无需额外的 D1 管理令牌。
 4. 打开部署得到的 HTTPS 地址，例如 `https://telegramdoor.<你的子域>.workers.dev`，输入管理密码。
 5. 用 `OWNER_ID` 对应的 Telegram 账号打开自己的机器人，发送 `/start`。
 6. 在后台「防护设置」点击 **连接 Telegram**，然后「检查连接」。这会设置 Webhook 和命令菜单，不丢弃未处理消息。
 7. 换另一个 Telegram 账号完成验证、发送留言，管理员引用回复进行验收。
 
-Cloudflare 的部署按钮支持 D1 自动创建和密钥提示，配置来源分别是 `wrangler.jsonc` 和 `.dev.vars.example`。首次云端部署仍需登录、授权和填写自己的密钥；本仓库不提供共享机器人服务。
+Cloudflare 的部署按钮支持 D1 自动创建和密钥提示，配置来源分别是 `wrangler.jsonc` 和 `.dev.vars.example`。模板中的全零 `database_id` 是占位值，向导应在你的副本中替换为真实 ID。首次云端部署仍需登录、授权和填写自己的密钥；本仓库不提供共享机器人服务。
+
+详细步骤与检查点见[一键部署与排错](docs/deployment.md)。按钮持续失败时，可使用[浏览器分步备用教程](docs/deployment-manual.md)；提前 Fork 只用于这条备用路径，不能保证解决 D1 自动创建失败。当前尚未完成本项目真实账户的一键部署验收，本地检查不能替代云端验证。
 
 **Project name 可以保留 `telegramdoor` 吗？** 可以。其他人的 GitHub、Cloudflare 账号可以使用同名仓库和 Worker，名称不需要全网唯一；自己的账号内已有同名资源时，请换一个未使用的名字，例如 `telegramdoor-inbox`。建议只用小写字母、数字和短横线，不以短横线开头或结尾，最长 63 个字符，以兼容 `workers.dev` 域名。
 
@@ -55,7 +59,7 @@ Cloudflare 的部署按钮支持 D1 自动创建和密钥提示，配置来源�
 
 模板已移出默认 GitHub Actions 工作流，以排除复制工作流的额外权限风险；这只是兼容性预防措施，不代表已经确认它就是仓库创建失败的原因。
 
-**只填三个配置就能用吗？** 默认聊天内算术验证可以。部署完成后还需给机器人发送 `/start`，并登录后台点击「连接 Telegram」。不需要准备 Turnstile 密钥，也不需要手动创建数据库。
+**只填三个配置就能用吗？** 按钮正常完成资源创建与发布后，默认聊天内算术验证只需要这三个配置。部署完成后还需给机器人发送 `/start`，并登录后台点击「连接 Telegram」。不需要准备 Turnstile 密钥，也不需要手动创建数据库。
 
 **Turnstile 也会自动创建吗？** 当前不会。部署按钮目前支持的自动创建资源不包含 Turnstile；启用它需要按[使用 Turnstile](#使用-turnstile)创建组件并填写两个密钥。Cloudflare 提供创建组件的 API，但需要额外的账户 ID 和具备 Turnstile 编辑权限的 API Token，无法只凭上面的三个配置完成。这个版本采用手动配置，不要求将 Cloudflare 账户管理凭据交给机器人。参见 [部署按钮支持的资源](https://developers.cloudflare.com/workers/platform/deploy-buttons/#automatic-resource-provisioning) 和 [Turnstile 自动化接口](https://developers.cloudflare.com/turnstile/get-started/widget-management/api/)。
 
@@ -76,7 +80,7 @@ npx wrangler login
 npx wrangler d1 create telegramdoor --binding DB --update-config
 ```
 
-如果 Wrangler 提示已有同名绑定，请将命令返回的数据库 ID 写入 `wrangler.jsonc` 的 `d1_databases[0].database_id`，保留 `binding: "DB"`。不要使用他人账户的数据库 ID。
+确认 `wrangler.jsonc` 的 `d1_databases[0].database_id` 已替换为命令返回的真实 ID。若 Wrangler 提示已有同名绑定，请手动替换全零占位值，并让 `database_name` 与实际名称一致，保留 `binding: "DB"`。占位值不能用于实际发布，不要使用他人账户的数据库 ID。
 
 交互录入三个配置，避免把密钥留在 shell 历史中：
 
@@ -204,7 +208,8 @@ docs/            上线验收与设计说明
 ## 文档与贡献
 
 - [架构与数据处理](docs/architecture.md)
-- [部署排错与浏览器恢复](docs/deployment.md)
+- [一键部署与排错](docs/deployment.md)
+- [浏览器分步部署（备用方案）](docs/deployment-manual.md)
 - [真实账号验收清单](docs/acceptance.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全问题报告](SECURITY.md)

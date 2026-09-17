@@ -4,14 +4,19 @@
 
 ## 部署
 
-- [ ] 从干净仓库使用 Cloudflare 部署按钮，确认只提示三个必填配置。
-- [ ] 创建出的仓库包含 `src/`、`package.json`、`package-lock.json` 和 `migrations/`；只有 README 和 Wrangler 配置时按[部署排错](deployment.md)处理。
-- [ ] 使用自己的 Project name、D1 名称完成构建，部署命令为 `npm run deploy`。
+- [ ] 从源仓库直接使用[一键部署](deployment.md)，无需提前 Fork；向导提示三个必填密钥，D1 选择 Create new。
+- [ ] 向导在部署者自己的 GitHub 账号创建完整副本，绑定中的全零 `database_id` 已替换为真实 ID。
+- [ ] 仓库包含 `src/`、`package.json`、`package-lock.json` 和 `migrations/`；只有 README 和 Wrangler 配置时按教程处理。
+- [ ] 向导自动创建的 D1 数据库实际存在于 Worker 所在账户，配置中的 `database_id` 与详情页一致；只有生成 ID 不算创建成功。
+- [ ] Worker 名称与 `wrangler.jsonc` 的 `name` 一致，部署命令为 `npm run deploy`。
+- [ ] 三个密钥保存到 Worker 运行时「变量和机密」，名称无多余空格，生产部署已生效。
 - [ ] 确认 D1 已创建、绑定名是 `DB`；无需额外 D1 API Token 或手工运行 SQL，首次访问 `/health` 返回 `ok: true`。
 - [ ] 后台能登录；刷新保持登录；退出后原 Cookie 无法访问 API。
 - [ ] 再次部署后，已有设置、封禁和消息对应关系仍保留。
 - [ ] 所有管理页面和手机布局正常；HTTPS 静态资源与 API 不报 CSP 错误。
 - [ ] 管理员向机器人 `/start` 后，在后台连接并检查 Webhook，URL 指向自己的域名。
+
+按钮持续失败时另行验收[浏览器分步备用方案](deployment-manual.md)，不要将手工补建数据库的成功记录算作一键部署成功。
 
 ## 双向私信
 
