@@ -137,13 +137,36 @@ afterEach(async () => {
 describe('administration security', () => {
   it('protects admin data, validates configuration and never returns credentials', async () => {
     expect((await request('/api/admin/settings')).status).toBe(401);
-    const bad = await app.request(`${origin}/health`, {}, { ...env, ADMIN_PASSWORD: 'short' });
+    const bad = await app.request(`${origin}/health`, {}, { ...env, ADMIN_PASSWORD: 'seven77' });
     expect(bad.status).toBe(503);
+    expect((await bad.json<{ error: string }>()).error).toContain('至少8位');
     const cookie = await login();
     const settings = await request('/api/admin/settings', 'GET', undefined, cookie);
     const output = await settings.text();
     expect(output).not.toContain(env.BOT_TOKEN);
     expect(output).not.toContain(env.ADMIN_PASSWORD);
+  });
+  it('accepts an eight-character password for health, login and authenticated requests', async () => {
+    const shortPasswordEnv = { ...env, ADMIN_PASSWORD: 'eight888' };
+    expect((await app.request(`${origin}/health`, {}, shortPasswordEnv)).status).toBe(200);
+    const response = await app.request(
+      `${origin}/api/auth/login`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-td-request': '1', origin },
+        body: JSON.stringify({ password: shortPasswordEnv.ADMIN_PASSWORD }),
+      },
+      shortPasswordEnv,
+    );
+    expect(response.status).toBe(200);
+    const cookie = response.headers.get('set-cookie')!.split(';')[0];
+    const settings = await app.request(
+      `${origin}/api/admin/settings`,
+      { headers: { cookie } },
+      shortPasswordEnv,
+    );
+    expect(settings.status).toBe(200);
+    expect(await settings.text()).not.toContain(shortPasswordEnv.ADMIN_PASSWORD);
   });
   it('uses HttpOnly same-site secure cookies and revokes them on logout', async () => {
     const response = await request('/api/auth/login', 'POST', { password: env.ADMIN_PASSWORD });

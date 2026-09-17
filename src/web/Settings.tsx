@@ -455,7 +455,7 @@ export default function SettingsPage({
           <ol>
             <li>
               <strong>ADMIN_PASSWORD</strong>
-              <p>控制台登录密码，至少 16 个字符。</p>
+              <p>控制台登录密码，至少 8 个字符。</p>
             </li>
             <li>
               <strong>BOT_TOKEN</strong>

@@ -47,7 +47,7 @@ app.use('*', async (c, next) => {
     return c.json(
       {
         error:
-          '请在 Worker 设置 → 变量和机密中配置 ADMIN_PASSWORD（至少16位）、BOT_TOKEN 和 OWNER_ID；仅填写构建变量不会生效。',
+          '请在 Worker 设置 → 变量和机密中配置 ADMIN_PASSWORD（至少8位）、BOT_TOKEN 和 OWNER_ID；仅填写构建变量不会生效。',
       },
       503,
     );

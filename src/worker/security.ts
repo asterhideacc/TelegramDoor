@@ -63,7 +63,7 @@ export async function decryptSecret(env: Env, value: string): Promise<string> {
 export function configured(env: Env): boolean {
   return (
     typeof env.ADMIN_PASSWORD === 'string' &&
-    env.ADMIN_PASSWORD.length >= 16 &&
+    env.ADMIN_PASSWORD.length >= 8 &&
     /^\d+:[\w-]{20,}$/.test(env.BOT_TOKEN || '') &&
     /^[1-9]\d{0,15}$/.test(env.OWNER_ID || '') &&
     Number.isSafeInteger(Number(env.OWNER_ID))

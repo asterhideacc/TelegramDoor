@@ -45,7 +45,7 @@
   "cloudflare": {
     "bindings": {
       "ADMIN_PASSWORD": {
-        "description": "后台密码，至少 16 个字符。请使用随机长密码。"
+        "description": "后台密码，至少 8 个字符。请使用独立的密码。"
       },
       "BOT_TOKEN": {
         "description": "从 Telegram @BotFather 创建机器人后取得的 Token。"
